@@ -1,0 +1,5 @@
+if bounds is not None:
+        min_x, min_y, max_x, max_y = bounds
+        clean_infill_gcode = clamp_gcode_to_bounds(
+            clean_infill_gcode, min_x, min_y, max_x, max_y, margin=0.0)
+            

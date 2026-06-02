@@ -1,0 +1,139 @@
+# ========================================================
+# OLOS SERVER CONFIGURATION FILE
+# ========================================================
+# This file contains machine-specific hardware, camera,
+# AI, and tool settings for the server backend.
+#
+# SAFE TO CHANGE:
+#   - machine_type
+#   - machine_bed_size
+#   - cameras_connection (ports, enabling stitching)
+#   - serial_connection (port, baudrate, timeout)
+#   - home_machine_on_start
+#   - ai_configuration (models, enable/disable)
+#   - tools (names, commands, Z-axis min/max values)
+#
+# ADVANCED SETTINGS (CAUTION ⚠):
+#   - camera calibration matrices & coefficients
+#   - stitching algorithm parameters
+#   - Z-axis ranges for tools (incorrect values can damage machine)
+#   - AI settings for laser cutter
+#
+# NOTE: Dimensions are in millimeters (mm) unless stated otherwise.
+# ========================================================
+
+# List of supported machine names:
+# - Laser Cutter
+# - cnc
+# - Vinyl Cutter
+# - 3D Printer
+
+# WARNING: Must match exactly one of the above names.
+# WARNING: Make sure the name of the machine match the interface configuration machine name also.
+machine_type: 3D Printer
+
+# Physical platform/bed size of the machine (working area dimensions)
+machine_bed_size:
+  width: 1000 # Bed width in mm
+  height: 600 # Bed height in mm
+
+# Camera system configuration
+cameras_connection:
+  # List the indexes of connected cameras from left to right
+  cameras_port_index:
+    - 0 # First camera index
+    # - 1  # Uncomment if second camera is connected
+
+  # Multi-camera image stitching settings
+  stitching_settings:
+    stitching_enabled: false # Set to true if using more than 1 camera
+    # Image stitching configuration
+    # Learn more: https://github.com/OpenStitching/stitching
+    algorithm_settings:
+      confidence_threshold: 0 # Confidence level for feature matching
+      blend_strength: 20 # Strength of image blending
+      detector: sift # Feature detection algorithm (sift, orb, etc.)
+      nfeatures: 5000 # Number of features to detect
+
+    frames_strip_height: 50 # Height of strip area used for stitching in pixels
+
+    # Camera calibration settings (affects image alignment)
+    cameras_calibration_settings:
+      cameras_matrix: # Intrinsic camera matrices
+        # First Camera
+        - [
+            [279.68109988, 0.0, 399.08388303],
+            [0.0, 280.78132116, 301.01582109],
+            [0.0, 0.0, 1.0],
+          ]
+        # Second Camera
+        - [
+            [279.68109988, 0.0, 399.08388303],
+            [0.0, 280.78132116, 301.01582109],
+            [0.0, 0.0, 1.0],
+          ]
+
+      cameras_coeffs: # Camera lens distortion coefficients
+        - [0.01407296, -0.0312378, 0.00073616, 0.00143817, 0.00534921] # First camera
+        - [0.01407296, -0.0312378, 0.00073616, 0.00143817, 0.00534921] # Second camera
+
+    start_strip_width: 115 # Left edge trim for stitching
+    end_strip_width: 1300 # Right edge trim for stitching
+
+# Serial connection settings for communicating with machine controller
+serial_connection:
+  port: COM10
+  timeout: 0.01 # Serial read timeout (seconds)
+  baudrate: 115200 # Communication speed (must match controller firmware)
+
+# Home the machine automatically on startup (optional)
+home_machine_on_start: false
+
+# AI image generator configuration
+# Learn more: https://github.com/rupeshs/fastsdcpu
+ai_configuration:
+  use_ai_image_generator: false # Enable AI-based image generation
+
+  # WARNING: Using unsupported model may cause crashes
+  supported_model: true
+
+  ai_models_list: # Supported AI model names (keep only compatible models)
+    - rupeshs--sd-turbo-openvino
+    - rupeshs--sdxs-512-0.9-openvino
+    - rupeshs--hyper-sd-sdxl-1-step-openvino-int8
+    - rupeshs--sdxl-turbo-openvino-int8
+    - Disty0--LCM_SoteMix
+    - runwayml--stable-diffusion-v1-5
+
+############### Laser Cutter Special Settings ##################
+laser_cutter_settings:
+  cameras_enabled: true # Enable camera(s) for laser cutting operations
+  tool_changer: true # Enable automatic laser head changer
+
+  tools: # Laser head definitions
+    no_tool:
+      name: No Tool
+      command: M6T0
+      # Z-axis limits for material thickness adjustments
+      z_axis:
+        min: -15
+        max: -80
+
+    CO2_laser:
+      name: CO2
+      command: M6T1
+      z_axis:
+        min: -15
+        max: -80.2
+
+    Diode_laser:
+      name: Diode
+      command: M6T2
+      z_axis:
+        min: -15
+        max: -85.6
+
+############### CNC Special Settings ##################
+cnc_settings:
+  tool_changer: true # Enable automatic CNC tool changer
+  cameras_enabled: false # Disable cameras for CNC operations

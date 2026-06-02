@@ -1,0 +1,7 @@
+Backend:
+cd C:\Users\Dharunjaz\Open-Lab-Operating-System-TEST\OLOS_Server
+.\venv\Scripts\python.exe .\src\main.py
+
+Frontend: 
+cd C:\Users\Dharunjaz\Open-Lab-Operating-System-TEST\OLOS_Interface
+yarn dev

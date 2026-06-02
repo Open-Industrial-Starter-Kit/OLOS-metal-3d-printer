@@ -1,0 +1,23 @@
+================================================================================
+CONSTANTS.TS - CURRENT PRUSA/PYSLM ZONE FIELDS
+================================================================================
+
+The slicer now uses:
+
+  // First layers
+  firstLayersCount
+  firstInfillPower
+  firstInfillSpeed
+  firstContourPower
+  firstContourSpeed
+
+  // Optional intermediate transition layers
+  intermediateZoneEnabled
+  intermediateLayersCount
+  intermediateInfillPower
+  intermediateInfillSpeed
+  intermediateContourPower
+  intermediateContourSpeed
+
+All layers after the first/intermediate zones use the normal contour and
+infill settings. There is no separate final-layer zone.

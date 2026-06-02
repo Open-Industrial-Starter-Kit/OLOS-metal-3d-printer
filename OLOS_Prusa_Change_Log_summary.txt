@@ -1,0 +1,38 @@
+OLOS Prusa Slicer Change Log Summary
+====================================
+
+Overall Summary
+---------------
+- Reworked the Prusa path into an OLOS/VisiCut-style metal printing workflow.
+- Generated vector contour and hatch G-code from Prusa SL1 slice masks.
+- Kept the proven physical hatch/contour spacing fixed at 0.2 mm.
+- Added multi-line contours and multi-line hatch bundles for LPBF-style scans.
+- Added Prusa-specific controls for infill angle, hatch rotation per layer, contour/infill overlap, scan-order optimization, contour line count, and infill lines per hatch.
+- Added per-zone exposure for first and intermediate layers, with the remaining layers using the main contour/infill settings.
+- Added OLSK machine routine handling, including no-routine first layers and bed offsets.
+- Made estimated print time include actual G-code motion time, including recoater/routine moves.
+- Improved preview support for VisiCut-style G-code, with blue contour walls and red infill lines.
+- Fixed several Prusa preview/G-code issues around layer count, routine Z interpretation, infill clipping, contour visibility, small model clipping, and stale preview updates.
+
+Latest LPBF Additions
+---------------------
+- Hatch Rotation per Layer:
+  Adds the configured rotation to the infill angle on each layer. Default is 67 degrees.
+- Contour/Infill Overlap:
+  Lets infill overlap the innermost contour, or use negative values to create a contour-to-infill gap. Default is 15%.
+- Infill Hatch Spacing:
+  Controls spacing between hatch bundles so infill density and heat input can be tuned without changing the fixed 0.2 mm line spacing inside each bundle. Default is 1 mm.
+- Optimize Hatch Scan Order:
+  Alternates hatch direction in a simple serpentine pattern to reduce repeated same-direction scanning.
+- Contour Line Count Limit:
+  Increased Prusa contour line count support to 25, allowing about 5 mm wall thickness at 0.2 mm spacing.
+- Reservoir Lift per Layer:
+  Adds a Prusa machine-routine setting for reservoir movement per layer. Default is 0.3 mm and is emitted as the current negative A-axis move.
+- Unit Fix:
+  Corrected Prusa Contour/Wall Speed display from mm to mm/min.
+
+Validation Summary
+------------------
+- Backend Python compile checks passed.
+- Frontend yarn lint passed.
+- Generated G-code was inspected for layer counts, S power values, feedrate formatting, contour/infill separation, routine behavior, and VisiCut-style structure.

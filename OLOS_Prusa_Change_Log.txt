@@ -1,0 +1,367 @@
+﻿OLOS Prusa Slicer Change Log
+============================
+
+Backend / Prusa Slicer
+----------------------
+- Added Prusa vector-based G-code generation from Prusa SL1 PNG masks.
+- Added VisiCut-style output formatting:
+  - Compact G0X...Y...S0 travel moves.
+  - Powered moves like G1X...Y...S55F2000.
+  - Modal contour continuation lines.
+  - M3 / M5 layer blocks.
+- Fixed feedrate after laser power so powered moves include feedrate, for example S55F2000.
+- Fixed per-zone exposure so first, intermediate, and final layer power/speed settings apply.
+- Fixed no-routine first layers so routine is skipped for the requested first layers.
+- Forced Prusa supports, pads, and hollowing off in generated masks.
+- Added Prusa-only infill angle.
+- Added Prusa contour line count.
+- Added Prusa infill lines per hatch.
+- Kept physical hatch/contour line spacing fixed at 0.2 mm.
+- Added multi-line contour generation using 0.2 mm spacing.
+- Added multi-line hatch bundles using 0.2 mm spacing.
+- Fixed hatch bundle spacing so lines are evenly spaced.
+- Fixed incomplete corner hatch bundles being emitted with fewer lines than requested.
+- Added adaptive fallback infill for thin regions where full bundles do not fit.
+- Fixed hatch grid anchoring so complex/off-center models like Benchy do not get one-sided weaker infill.
+- Fixed contour extraction resolution for cylinders and curved shapes.
+- Changed contour extraction to keep full boundary points.
+- Added small contour simplification to reduce pixel-stair jaggedness.
+- Fixed layer count issues from Prusa supports, pads, and hollowing masks.
+- Fixed Prusa preview/G-code layer Z interpretation for VisiCut-style repeated routine Z.
+- Removed the temporary editable Line Spacing setting after deciding 0.2 mm should stay fixed.
+- Added Prusa hatch rotation per layer, defaulting to 67 degrees, so each layer increments the hatch angle.
+- Added contour/infill overlap control as a percent of the fixed 0.2 mm hatch spacing, defaulting to 15%.
+- Added hatch scan order optimization with alternating/serpentine hatch direction between layers.
+- Increased the Prusa contour line count limit to 25, allowing up to about 5 mm wall thickness at 0.2 mm spacing.
+
+Frontend / Settings UI
+----------------------
+- Added Prusa UI controls for:
+  - Infill Angle.
+  - Hatch Rotation per Layer.
+  - Infill Lines per Hatch.
+  - Contour/Infill Overlap.
+  - Optimize Hatch Scan Order.
+  - Contour Line Count.
+- Wired those fields through:
+  - Frontend interfaces.
+  - Constants/default settings.
+  - Store/profile loading.
+  - Backend Pydantic model.
+  - Backend slicing dispatcher.
+- Temporarily added Line Spacing, then removed it and restored fixed 0.2 mm.
+- Increased the Prusa contour line count UI limit from 10 to 25.
+
+Preview
+-------
+- Added support for commentless VisiCut-style G-code preview.
+- Added logic to split infill and contour from M3 / M5 blocks.
+- Added preview-only synthetic layer Z handling for VisiCut-style G-code.
+- Fixed the skyscraper preview issue caused by routine Z being interpreted as real accumulated Z.
+- Fixed layer slider behavior so it can move past the first layer.
+- Fixed first-layer preview gap/offset.
+- Fixed contour preview returning after it disappeared during earlier tests.
+- Tried a solid translucent contour preview, then reverted it because it made infill/contour harder to separate.
+- Removed noisy per-wall preview console logging.
+- Added an estimate print time, which includes the total print time and the total recoating time.
+
+Validation
+----------
+- Repeatedly ran backend Python compile checks.
+- Ran frontend yarn lint.
+- Parsed generated .nc / .gcode files to compare:
+  - Layer counts.
+  - Infill move counts.
+  - Contour move counts.
+  - S power changes.
+  - First/intermediate/final zone behavior.
+  - Contour and infill separation.
+- Compared generated structure against the VisiCut sample format.
+
+Latest LPBF Feature Update - Detailed File Notes
+================================================
+
+Purpose
+-------
+This update added three LPBF-focused controls to the Prusa workflow:
+- Inter-layer hatch rotation.
+- Contour/infill overlap.
+- Hatch scan order optimization.
+
+It also fixed the contour line count limit so the UI and backend both support up to 25 contour lines, which equals about 5 mm wall thickness at the fixed 0.2 mm line spacing.
+
+OLOS_Interface/src/components/3DSlicingTabComponent/components/MainToolsBar/components/components/PrintingConfigurations/components/PrusaSettings.vue
+------------------------------------------------------------------------------------------------------------------------------------------------------
+- Added a new Prusa input: Hatch Rotation per Layer.
+  - Bound to prusaSettings.hatchRotationPerLayer.
+  - Accepts values from 0 to 360 degrees.
+  - Default value comes from constants.ts and is 67 degrees.
+  - This controls how much the infill angle changes after each layer.
+- Added a new Prusa input: Contour/Infill Overlap.
+  - Bound to prusaSettings.contourInfillOverlap.
+  - Accepts values from 0 to 100 percent.
+  - Default value is 15 percent of the fixed 0.2 mm hatch spacing.
+  - This lets the infill slightly overlap the innermost contour to reduce shell-core gaps.
+- Added a new Prusa toggle: Optimize Hatch Scan Order.
+  - Bound to prusaSettings.optimizeScanOrder.
+  - Default is enabled.
+  - Enables simple serpentine/alternating hatch direction.
+- Increased the existing Contour Line Count input limit:
+  - Old max: 10.
+  - New max: 25.
+  - Validation message was updated to match the new range.
+
+OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+-----------------------------------------------------
+- Extended the PrusaSettings interface with:
+  - hatchRotationPerLayer: number.
+  - contourInfillOverlap: number.
+  - optimizeScanOrder: boolean.
+- This makes the new Prusa UI fields part of the typed frontend slicing settings object.
+
+OLOS_Interface/src/constants.ts
+-------------------------------
+- Added tooltip/help messages for:
+  - PRUSA_HATCH_ROTATION_PER_LAYER.
+  - PRUSA_CONTOUR_INFILL_OVERLAP.
+  - PRUSA_OPTIMIZE_SCAN_ORDER.
+- Added default Prusa values:
+  - hatchRotationPerLayer: 67.
+  - contourInfillOverlap: 15.
+  - optimizeScanOrder: true.
+- These defaults are applied when the Prusa settings object is created/reset.
+
+OLOS_Server/src/fastapi_server/models/slice_model.py
+----------------------------------------------------
+- Extended the PrusaSlicerSettings Pydantic model with:
+  - hatchRotationPerLayer, default 67.
+  - contourInfillOverlap, default 15.
+  - optimizeScanOrder, default true.
+- This allows the FastAPI backend to accept the new frontend Prusa settings.
+
+OLOS_Server/src/utils/threeD_slice.py
+-------------------------------------
+- Mapped the new frontend Prusa fields into the backend slicing dictionary:
+  - hatchRotationPerLayer -> hatch_rotation_per_layer.
+  - contourInfillOverlap -> contour_infill_overlap.
+  - optimizeScanOrder -> optimize_scan_order.
+- Converted contourInfillOverlap from percent to a fraction:
+  - Example: 15 becomes 0.15.
+- Kept line_bundle_spacing fixed at 0.2 mm.
+
+OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+----------------------------------------------------------
+- Added the same Prusa setting mappings to the alternate/legacy dispatcher:
+  - contourLineCount.
+  - infillAngle.
+  - hatchRotationPerLayer.
+  - infillLineCount.
+  - contourInfillOverlap.
+  - optimizeScanOrder.
+  - line_bundle_spacing fixed at 0.2 mm.
+- This keeps older import paths compatible with the active Prusa workflow.
+
+OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+---------------------------------------------------------------
+- Applied inter-layer hatch rotation when generating each layer:
+  - layer_angle = infill_angle + layer_index * hatch_rotation_per_layer.
+  - The result is wrapped modulo 180 degrees because hatch lines at 0 and 180 degrees are geometrically equivalent.
+- Applied contour/infill overlap by reducing the infill boundary clearance:
+  - Base clearance comes from the number of contour lines and fixed 0.2 mm spacing.
+  - The overlap amount is contour_infill_overlap times 0.2 mm.
+  - Example default: 15 percent of 0.2 mm = 0.03 mm overlap.
+- Added scan order optimization:
+  - Hatch lines are ordered in a simple serpentine pattern.
+  - Every other line reverses direction to reduce long laser jumps.
+  - Every other layer reverses overall scan direction when optimize_scan_order is enabled.
+- Increased backend line count normalization from 10 to 25:
+  - This makes the new UI max actually produce up to 25 contour lines.
+  - Without this backend change, the UI could accept 25 but the slicer would still silently clamp it to 10.
+- Passed spacing, contour count, overlap, rotation, and scan order settings through the vector infill generator.
+
+Validation for This Update
+--------------------------
+- Ran backend Python compile on:
+  - OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py.
+  - OLOS_Server/src/utils/threeD_slice.py.
+  - OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py.
+  - OLOS_Server/src/fastapi_server/models/slice_model.py.
+- Ran frontend yarn lint in OLOS_Interface.
+- Ran a small synthetic square hatch test to confirm rotated/alternated hatch G-code is generated.
+
+Changes By File
+===============
+
+OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+---------------------------------------------------------------
+- Reworked Prusa slicing to generate OLOS/VisiCut-style vector G-code from Prusa SL1 PNG masks.
+- Forced Prusa supports, pads, and hollowing off so extra generated mask geometry does not enter the laser toolpath.
+- Added adaptive display resolution for slice masks and full contour extraction for smoother cylinders/curves.
+- Added mask-to-shapely region conversion, topology cleanup, and light simplification to reduce pixel-stair contours.
+- Added vector infill generation with configurable infill angle and multi-line hatch bundles.
+- Added per-layer hatch angle rotation using infill angle plus hatch rotation per layer.
+- Added contour/infill overlap control by reducing infill boundary clearance toward the innermost contour.
+- Added simple scan-order optimization with serpentine hatch direction and alternating direction every other layer.
+- Added vector contour generation with configurable contour line count.
+- Kept hatch/contour bundle spacing fixed at 0.2 mm.
+- Fixed hatch bundle anchoring so complex/off-center parts like Benchy do not get weaker infill on one side.
+- Added fallback infill for thin regions where a full hatch bundle cannot fit.
+- Prevented incomplete hatch bundles at corners where fewer lines than requested would be emitted.
+- Increased backend line count normalization from 10 to 25 so thick Prusa contour walls are actually generated.
+
+OLOS_Server/src/utils/threeD_printing_slice/src/slicers_shared_methods.py
+------------------------------------------------------------------------
+- Added three-zone exposure handling: first, intermediate, and final layers.
+- Applied per-zone power/speed to both contour and infill settings.
+- Added VisiCut-style layer block generation for Prusa output.
+- Added routine/no-routine handling so the first N layers can skip the machine routine.
+- Fixed powered G-code formatting so feedrate is emitted with power, for example S55F2000.
+- Removed redundant laser-off feedrates in generated sections.
+- Adjusted routine Z behavior for VisiCut-style blocks so the preview and machine routine do not create fake accumulated Z.
+
+OLOS_Server/src/utils/threeD_slice.py
+-------------------------------------
+- Wired frontend Prusa settings into backend slicing data.
+- Added Prusa contourLineCount, infillAngle, and infillLineCount mapping.
+- Added Prusa hatchRotationPerLayer, contourInfillOverlap, and optimizeScanOrder mapping.
+- Added per-zone exposure mapping into the active slicing dispatcher.
+- Added machine routine settings mapping: noRoutineFirstLayers, bedOffsetX, and bedOffsetY.
+- Kept line_bundle_spacing fixed at 0.2 mm for Prusa/PySLM-style bundle generation.
+
+OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+----------------------------------------------------------
+- Updated the alternate/legacy slicing dispatcher with the same Prusa settings mapping.
+- Added per-zone exposure mapping for compatibility with code paths that still import this dispatcher.
+- Added Prusa contour count, infill angle, infill line count, and fixed 0.2 mm bundle spacing.
+- Added Prusa hatch rotation, contour/infill overlap, and scan order optimization mapping.
+
+OLOS_Server/src/fastapi_server/models/slice_model.py
+----------------------------------------------------
+- Extended slicing request models with reusable per-zone exposure fields.
+- Added Prusa fields for contourLineCount, infillAngle, and infillLineCount.
+- Added Prusa fields for hatchRotationPerLayer, contourInfillOverlap, and optimizeScanOrder.
+- Added routine and bed offset request fields.
+- Kept removed experimental lineBundleSpacing out of the final model so 0.2 mm remains fixed.
+
+OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+-----------------------------------------------------
+- Added reusable ZoneExposureSettings shape.
+- Extended Prusa settings with contourLineCount, infillAngle, and infillLineCount.
+- Extended Prusa settings with hatchRotationPerLayer, contourInfillOverlap, and optimizeScanOrder.
+- Added routine and bed offset fields to slicing settings.
+- Removed the temporary lineBundleSpacing setting after deciding the process spacing should stay fixed.
+
+OLOS_Interface/src/constants.ts
+-------------------------------
+- Added default Prusa values for contourLineCount, infillAngle, and infillLineCount.
+- Added default Prusa values for hatchRotationPerLayer, contourInfillOverlap, and optimizeScanOrder.
+- Added default per-zone exposure values for first, intermediate, and final layers.
+- Added default no-routine and bed offset values.
+- Removed the temporary lineBundleSpacing default after reverting that UI setting.
+
+OLOS_Interface/src/components/3DSlicingTabComponent/components/MainToolsBar/components/components/PrintingConfigurations/components/PrusaSettings.vue
+------------------------------------------------------------------------------------------------------------------------------------------------------
+- Added Prusa UI controls for contour line count, infill angle, and infill lines per hatch.
+- Added Prusa UI controls for hatch rotation per layer, contour/infill overlap, and scan order optimization.
+- Increased Prusa contour line count input limit from 10 to 25.
+- Added per-zone exposure UI sections for first layers, intermediate layers, and final layers.
+- Added machine routine UI fields for no-routine first layers and bed offsets.
+- Temporarily added a line spacing field, then removed it so the proven 0.2 mm spacing stays fixed.
+
+OLOS_Interface/src/workers/slice.previewer.worker.ts
+----------------------------------------------------
+- Added support for commentless VisiCut-style G-code preview.
+- Added M3/M5 block parsing for Prusa/VisiCut-style layer blocks.
+- Added logic to split contour and infill without relying on ;infill / ;contour comments.
+- Added synthetic preview Z positions for VisiCut-style output.
+- Fixed repeated routine Z detection so the preview does not become a tall fake tower.
+
+OLOS_Interface/src/services/gcode.previewer.service/gcode.3D.previewer.service.ts
+--------------------------------------------------------------------------------
+- Updated layer visibility tracking so both contour meshes and infill line segments follow the slider correctly.
+- Fixed first-layer/next-layer zOffset handling so layer 1 does not look like many contour layers are already printed.
+- Kept the final preview style as blue contour walls plus red infill lines.
+- Tried a translucent solid contour skin, then reverted it because it made contour/infill separation harder.
+
+OLOS_Interface/src/services/gcode.previewer.service/gcode.previewer.helper.service.ts
+------------------------------------------------------------------------------------
+- Updated contour preview mesh generation for layer-height-aware vertical walls.
+- Fixed first layer contour visibility with a tiny visible wall offset.
+- Removed the experimental solid contour cap/skin logic after reverting to the clearer older preview style.
+- Removed noisy per-wall debug logging from the preview path.
+
+
+Prusa Metal Printing Settings Update - 2026-06-02
+=================================================
+
+Purpose
+-------
+- Added Prusa-only controls for metal printing tuning requested after Benchy preflight checks.
+- Focused on heat/infill density and OLSK routine control while preserving the proven VisiCut-style G-code format.
+- Kept the fixed intra-bundle line spacing behavior at 0.2 mm, but added a separate hatch bundle spacing control so infill density can be changed safely.
+
+OLOS_Interface/src/components/3DSlicingTabComponent/components/MainToolsBar/components/components/PrintingConfigurations/components/PrusaSettings.vue
+------------------------------------------------------------------------------------------------------------------------------------------------------
+- Fixed the Contour/Wall Speed input suffix from "mm" to "mm/min" because the value is used as a G-code feedrate.
+- Updated the Contour/Infill Overlap input to accept negative values from -100% to 100%.
+  - Positive values push infill toward/into the innermost contour.
+  - Zero keeps the neutral boundary behavior.
+  - Negative values increase the gap between contour and infill when separation is needed for heat control or testing.
+- Added an Infill Hatch Spacing input in millimeters.
+  - This controls the distance between hatch bundles.
+  - It does not change the fixed 0.2 mm spacing between the lines inside each multi-line hatch bundle.
+  - Increasing this value reduces infill density and heat input.
+  - Decreasing this value increases infill density, with backend protection so it cannot become smaller than the bundle width.
+- Added a Reservoir Lift per Layer input in millimeters under Machine Routine.
+  - The UI value is entered as a positive distance, for example 0.3 mm.
+  - The backend converts it to the current machine convention by outputting a negative A-axis move, for example G1 A-0.3 F50.
+
+OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+-----------------------------------------------------
+- Added infillHatchSpacing to PrusaSettings.
+- Added reservoirLiftPerLayer to the reusable routine/machine settings shape.
+- This keeps TypeScript validation, profile loading, and store state aligned with the new UI fields.
+
+OLOS_Interface/src/constants.ts
+-------------------------------
+- Added default Prusa infillHatchSpacing value of 1 mm.
+- Added default Prusa reservoirLiftPerLayer value of 0.3 mm.
+- Added tooltip/help text for:
+  - PRUSA_INFILL_HATCH_SPACING
+  - PRUSA_RESERVOIR_LIFT_PER_LAYER
+- Updated contour/infill overlap help text to explain that negative overlap creates a deliberate contour-to-infill gap.
+
+OLOS_Server/src/fastapi_server/models/slice_model.py
+----------------------------------------------------
+- Extended PrusaSlicerSettings with infillHatchSpacing.
+- Extended ZoneExposureSettings with reservoirLiftPerLayer.
+- This allows the frontend request body to send both settings without API validation rejecting them.
+
+OLOS_Server/src/utils/threeD_slice.py
+-------------------------------------
+- Mapped Prusa reservoirLiftPerLayer into internal slicing_data as powder_feed.
+- The mapping uses -abs(value), so a positive UI value always becomes the expected negative A-axis reservoir move.
+- Mapped Prusa infillHatchSpacing into internal slicing_data as infill_hatch_spacing.
+- Left line_bundle_spacing fixed at 0.2 mm so the line spacing inside contour/hatch bundles remains unchanged.
+
+OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+----------------------------------------------------------
+- Added the same reservoirLiftPerLayer and infillHatchSpacing mapping to the alternate/legacy Prusa dispatcher.
+- This keeps older imports/code paths consistent with the active dispatcher.
+
+OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+---------------------------------------------------------------
+- Added support for signed contour_infill_overlap values.
+  - Previous behavior clamped overlap to 0..1.
+  - New behavior allows -1..1, so negative overlap increases boundary clearance and creates a gap between infill and contour.
+- Added infill_hatch_spacing support in the vector infill generator.
+  - The hatch spacing setting controls pitch between hatch bundles.
+  - The fixed 0.2 mm intra-bundle spacing is still used for the individual parallel lines inside each hatch/contour group.
+  - If hatch spacing is set too low, pitch is clamped to at least the width required by the selected hatch line count.
+- Preserved existing VisiCut-style powered move formatting such as S55F2000.
+- Preserved the existing OLSK routine block structure.
+
+Validation
+----------
+- Backend Python compile passed for the changed Prusa slicing and API model files.
+- Frontend yarn lint passed.

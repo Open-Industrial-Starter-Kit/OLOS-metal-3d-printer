@@ -1,0 +1,165 @@
+# ========================================================
+# OLOS Interface CONFIGURATION FILE
+# ========================================================
+# This file controls machine-specific settings and interface
+#
+# SAFE TO CHANGE:
+#   - machine_type
+#   - machine_platform start/end points (work area)
+#   - machine_screen size
+#   - axis_directions inversion
+#   - remote_file_uploader
+#   - job_previewer settings (platform_shape, graph_step_size)
+#   - parking_settings
+#   - tools list (names and commands)
+#
+# ADVANCED SETTINGS (CAUTION ⚠):
+#   - gcode_generator ranges (laser_power, movement_speed, material_thickness, dithering_settings)
+#     Changing these may affect machine performance or generate invalid G-code.
+#
+# NOTE: Values are in millimeters (mm) unless otherwise specified.
+# ========================================================
+
+# List of supported machine types:
+# - Laser Cutter
+# - cnc
+# - Vinyl Cutter
+# - 3D Printer
+# WARNING: Must match exactly one of the above names.
+machine_type: 3D Printer # Select the active machine type
+
+machine_platform:
+  # Coordinates for the platform's starting point (origin)
+  start_point:
+    x: 0
+    y: 0
+    z: 0
+
+  # Coordinates for the platform's end point (maximum working area)
+  end_point:
+    x: 100
+    y: 100
+    z: 100
+
+machine_screen:
+  width: 1200 # Machine display screen width in pixels
+  height: 800 # Machine display screen height in pixels
+
+axis_directions:
+  xInvert: false # Invert X-axis movement if true
+  yInvert: false # Invert Y-axis movement if true
+  zInvert: true # Invert Z-axis movement if true
+
+remote_file_uploader: false # Enable remote file upload feature
+
+# --------- 3D Printer Settings ----------- #
+printer_settings:
+  job_previewer:
+    platform_shape: circle # Shape of the print bed preview: rectangle | circle
+    graph_step_size: 5 # Grid spacing in the preview (mm)
+
+# --------- Vinyl Cutter Settings ----------- #
+vinyl_cutter_settings:
+  job_previewer:
+    graph_step_size: 50 # Grid spacing in the preview (mm)
+
+# --------- CNC Settings ----------- #
+cnc_settings:
+  cameras_enabled: true # Enable camera view for CNC
+  tool_changer: true # Enable automatic tool changer
+
+  tools: # List of available CNC tools
+    no_tool:
+      name: No Tool
+      command: M6T0 # G-code command to deselect any tool
+    tool_number_1:
+      name: Num1
+      command: M6T1
+    tool_number_2:
+      name: Num2
+      command: M6T2
+    tool_number_3:
+      name: Num3
+      command: M6T3
+    tool_number_4:
+      name: Num4
+      command: M6T4
+    tool_number_5:
+      name: Num5
+      command: M6T5
+    tool_number_6:
+      name: Num6
+      command: M6T6
+    tool_number_7:
+      name: Num7
+      command: M6T7
+    tool_number_8:
+      name: Num8
+      command: M6T8
+    tool_number_9:
+      name: Num9
+      command: M6T9
+    tool_number_10:
+      name: Num10
+      command: M6T10
+    tool_number_11:
+      name: Num11
+      command: M6T11
+    tool_number_12:
+      name: Num12
+      command: M6T12
+
+  job_previewer:
+    graph_step_size: 50 # Grid spacing in the preview (mm)
+
+# --------- Laser Cutter Settings ----------- #
+laser_cutter_settings:
+  cameras_enabled: true # Enable camera view for laser cutter
+  ai_image_generator: true # Enable AI-generated images for engraving
+
+  tool_changer: true # Enable automatic tool changer
+  tools: # List of available laser heads
+    no_tool:
+      name: No Tool
+      command: M6T0
+
+    CO2_laser:
+      name: CO2
+      command: M6T1
+
+    Diode_laser:
+      name: Diode
+      command: M6T2
+
+  job_previewer:
+    graph_step_size: 25 # Grid spacing in the preview (mm)
+    parking_settings: # Allows the laser head to move to a "parking" position during preview
+      parking_enabled: true
+      point:
+        x: -900 # Parking X-coordinate
+        y: -70 # Parking Y-coordinate
+        z: -15 # Parking Z-coordinate
+      feed_rate: 5000 # Movement speed when parking (mm/min)
+
+  # ⚠ Warning: Modifying the following may break G-code generation
+  gcode_generator:
+    laser_power: # Laser power range (%)
+      min: 0
+      max: 100
+    movement_speed: # Movement speed range (mm/min)
+      min: 0
+      max: 100000
+    material_thickness: # Material thickness range (mm)
+      min: 0
+      max: 1000
+    dithering_settings: # Settings for dithering algorithms (image engraving)
+      resolution:
+        min: 0
+        max: 1000
+      grid_algorithm:
+        block_size: # Size of dithering blocks (pixels)
+          min: 0
+          max: 10
+        block_distance: # Distance between dithering blocks (pixels)
+          min: 0
+          max: 10
