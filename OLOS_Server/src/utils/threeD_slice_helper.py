@@ -16,6 +16,7 @@ import json
 import multiprocessing
 import math
 import re
+import traceback
 from utils.tmp_files_manager import TempFilesManager
 from utils.threeD_slice import ThreeDSlice
 from core.constants import CoreConstants as constants
@@ -42,8 +43,22 @@ def start_slicing_process(threeD_slice,
         # slice the model sent
         threeD_slice.slice_models(
             model_tmp_file, slice_result_tmp_file, slice_data, websocket_queue)
+        slicing_settings = getattr(slice_data, 'slicingSettings', None)
+        acceleration_settings = None
+        if slicing_settings is not None:
+            slicing_lib = getattr(slicing_settings, 'slicingLib', None)
+            if slicing_lib == constants.SLICING_LIBRARIES['PRUSA_SLICER']:
+                active_settings = getattr(
+                    slicing_settings, 'prusaSettings', None)
+                acceleration_settings = getattr(
+                    active_settings, 'engravingAcceleration', None)
+            elif slicing_lib == constants.SLICING_LIBRARIES['PYSLM']:
+                active_settings = getattr(
+                    slicing_settings, 'pyslmSettings', None)
+                acceleration_settings = getattr(
+                    active_settings, 'engravingAcceleration', None)
         estimated_print_time_seconds = SliceHelper.estimate_gcode_print_time(
-            slice_result_tmp_file)
+            slice_result_tmp_file, acceleration_settings)
 
         result = SliceHelper._fastapi_3d_slice_response(
             type=constants.SLICE_DATA_TYPE,
@@ -56,11 +71,13 @@ def start_slicing_process(threeD_slice,
         )
 
     except Exception as e:
+        error_details = traceback.format_exc()
         print("Error:", e)
+        print(error_details)
         result = SliceHelper._fastapi_3d_slice_response(
             type=constants.SLICE_DATA_TYPE,
             process=constants.SLICE_PROCESS,
-            result='',
+            result=error_details,
             files_list=[],
             slicing_profiles=[],
             success=False)
@@ -348,12 +365,13 @@ class SliceHelper:
 
         return response
 
-    def handle_error_requests(self, process):
+    def handle_error_requests(self, process, error=None):
         """
         Generic error response handler.
 
         Args:
             process (str): Process name that failed.
+            error (Exception | str | None): Optional error details.
 
         Returns:
             dict: Standard error response.
@@ -362,7 +380,7 @@ class SliceHelper:
         return self._fastapi_3d_slice_response(
             type=constants.SLICE_DATA_TYPE,
             process=process,
-            result='',
+            result='' if error is None else str(error),
             files_list=[],
             slicing_profiles=[],
             success=False,
@@ -396,8 +414,7 @@ class SliceHelper:
         return result
 
     @staticmethod
-    @staticmethod
-    def estimate_gcode_print_time(gcode_file_path):
+    def estimate_gcode_print_time(gcode_file_path, acceleration_mm_s2=None):
         """
         Estimate print duration from generated G-code motion commands.
 
@@ -421,8 +438,17 @@ class SliceHelper:
         machine_position = {axis: 0.0 for axis in axes}
         work_offset = {axis: 0.0 for axis in axes}
         feedrate = 0.0
+        acceleration = 0.0
+        if acceleration_mm_s2 is not None:
+            parsed_acceleration = float(acceleration_mm_s2)
+            if parsed_acceleration > 0:
+                acceleration = parsed_acceleration
         absolute_positioning = True
         total_seconds = 0.0
+
+        estimate_acceleration_re = re.compile(
+            r';\s*ESTIMATE\s+ACCELERATION:\s*(-?\d+(?:\.\d+)?)',
+            re.IGNORECASE)
 
         def work_position():
             return {
@@ -430,8 +456,29 @@ class SliceHelper:
                 for axis in axes
             }
 
+        def motion_seconds(distance, feedrate_mm_min):
+            if distance <= 0 or feedrate_mm_min <= 0:
+                return 0.0
+            velocity = feedrate_mm_min / 60.0
+            if acceleration <= 0 or velocity <= 0:
+                return (distance / feedrate_mm_min) * 60.0
+
+            accel_distance = (velocity * velocity) / (2.0 * acceleration)
+            if distance >= 2.0 * accel_distance:
+                return (
+                    2.0 * velocity / acceleration
+                    + (distance - 2.0 * accel_distance) / velocity
+                )
+            return 2.0 * math.sqrt(distance / acceleration)
+
         with open(gcode_file_path, mode='r', errors='ignore') as gcode_file:
             for raw_line in gcode_file:
+                acceleration_match = estimate_acceleration_re.search(raw_line)
+                if acceleration_match:
+                    parsed_acceleration = float(acceleration_match.group(1))
+                    if parsed_acceleration > 0:
+                        acceleration = parsed_acceleration
+
                 line = raw_line.split(';', 1)[0].strip()
                 if not line:
                     continue
@@ -480,8 +527,7 @@ class SliceHelper:
                     distance = math.sqrt(
                         sum((target[axis] - machine_position[axis]) ** 2
                             for axis in axes))
-                    if distance > 0 and feedrate > 0:
-                        total_seconds += (distance / feedrate) * 60
+                    total_seconds += motion_seconds(distance, feedrate)
                     machine_position = target
                     continue
 
@@ -493,7 +539,8 @@ class SliceHelper:
                     if 'S' in dwell_values:
                         total_seconds += max(0.0, dwell_values['S'])
                     elif 'P' in dwell_values:
-                        total_seconds += max(0.0, dwell_values['P']) / 1000
+                        # GRBL defines G4 P in seconds.
+                        total_seconds += max(0.0, dwell_values['P'])
 
         return round(total_seconds)
 

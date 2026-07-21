@@ -74,41 +74,75 @@ class MachineConnector(Process):
         Handles reconnection and error reporting.
         """
 
-        try:
-            self._config = ConfigurationLoader.from_yaml()
+        disconnected_notified = False
+        last_configured_port = None
 
-            # start serial connection
-            self._serial_connection.connect_to_serial(
-                self._config.serial_connection.port, self._config.serial_connection.baudrate, self._config.serial_connection.timeout)
+        while True:
+            try:
+                # Reload the machine settings before every reconnect attempt.
+                # This lets a corrected COM port take effect without leaving a
+                # stale value cached in the long-running connector process.
+                self._config = ConfigurationLoader.from_yaml()
+                controller_required = (
+                    self._config.serial_connection.controller_required
+                    is not False
+                )
+                retry_interval = 1 if controller_required else 5
+                configured_port = self._config.serial_connection.port
 
-            if self._serial_connection.is_serial_connected():
+                if configured_port != last_configured_port:
+                    print(
+                        "Machine controller serial port configured as:",
+                        configured_port,
+                    )
+                    last_configured_port = configured_port
 
-                # notify the core that the machine is connected
-                self.add_to_serial_read_queue(constants.MACHINE_CONNECTION_DATA_TYPE,
-                                              constants.HIGH_PRIORITY_COMMAND,
-                                              True)
+                self._serial_connection.connect_to_serial(
+                    configured_port,
+                    self._config.serial_connection.baudrate,
+                    self._config.serial_connection.timeout,
+                )
 
-                self._start_machine_communication()
+                if self._serial_connection.is_serial_connected():
+                    self.machine_connector_data.is_serial_connected = True
+                    self.add_to_serial_read_queue(
+                        constants.MACHINE_CONNECTION_DATA_TYPE,
+                        constants.HIGH_PRIORITY_COMMAND,
+                        True,
+                    )
+                    disconnected_notified = False
+                    self._start_machine_communication()
 
-            else:
-                print("There is no serial connection")
-                # notify the core that the machine is disconnected
-                self.add_to_serial_read_queue(constants.MACHINE_CONNECTION_DATA_TYPE,
-                                              constants.HIGH_PRIORITY_COMMAND,
-                                              False)
+                if not disconnected_notified:
+                    self.machine_connector_data.is_serial_connected = False
+                    message = (
+                        "Controller is unavailable; server is running in offline mode."
+                        if not controller_required
+                        else "There is no serial connection"
+                    )
+                    print(message)
+                    self.add_to_serial_read_queue(
+                        constants.MACHINE_CONNECTION_DATA_TYPE,
+                        constants.HIGH_PRIORITY_COMMAND,
+                        False,
+                    )
+                    disconnected_notified = True
 
-                self._reconnect_to_serial()
+            except Exception as error:
+                print("Serial Connection Error:", error)
+                retry_interval = 5
+                self.machine_connector_data.is_serial_connected = False
+                self._serial_connection.disconnect_serial()
 
-        except Exception as error:
-            print("Serial Connection Error:", error)
-            self._serial_connection.disconnect_serial()
+                if not disconnected_notified:
+                    self.add_to_serial_read_queue(
+                        constants.MACHINE_CONNECTION_DATA_TYPE,
+                        constants.HIGH_PRIORITY_COMMAND,
+                        False,
+                    )
+                    disconnected_notified = True
 
-            # notify the core that the machine is disconnected
-            self.add_to_serial_read_queue(constants.MACHINE_CONNECTION_DATA_TYPE,
-                                          constants.HIGH_PRIORITY_COMMAND,
-                                          False)
-
-            self._reconnect_to_serial()
+            time.sleep(retry_interval)
 
     def add_to_serial_write_queue(self, type, priority, command):
         """
@@ -119,6 +153,16 @@ class MachineConnector(Process):
             priority (int): Command priority.
             command (str): The G-code command to send.
         """
+
+        requires_ack = type not in {
+            constants.REAL_TIME_COMMAND_DATA_TYPE,
+            constants.MACHINE_STATUS_DATA_TYPE,
+        }
+        if requires_ack:
+            # Reserve the acknowledgement before queueing. Without this, the
+            # core can observe the machine as ready again and advance through
+            # many file lines before this process writes the first command.
+            self.machine_connector_data.ok_messages_counter += 1
 
         self.machine_connector_data.serial_write_queue.put(
             type, priority, command)
@@ -219,10 +263,24 @@ class MachineConnector(Process):
 
     def reset_counter(self):
         """
-        Resets the acknowledgment message counter to -1.
+        Resets the number of commands awaiting controller acknowledgement.
         """
 
-        self.machine_connector_data.ok_messages_counter = -1
+        self.machine_connector_data.ok_messages_counter = 0
+
+    def clear_error_state(self):
+        """
+        Clears the GRBL error and pause flags before a new job begins.
+
+        reset_counter() only zeros ok_messages_counter — if a previous run
+        ended with a GRBL error: response, has_command_error and is_machine_pause
+        stay True, causing is_machine_ready() to always return False and the new
+        job to silently send nothing to the machine.  Call this alongside
+        reset_counter() whenever a fresh job is started.
+        """
+
+        self.machine_connector_data.has_command_error = False
+        self.machine_connector_data.is_machine_pause = False
 
     def is_machine_ready(self):
         """
@@ -234,6 +292,7 @@ class MachineConnector(Process):
 
         if (self.machine_connector_data.ok_messages_counter <= 0 and
             not self.machine_connector_data.is_tool_change_process and
+            not self.machine_connector_data.has_command_error and
                 not self.machine_connector_data.is_machine_pause):
             return True
 
@@ -244,7 +303,7 @@ class MachineConnector(Process):
         Continuously reads from and writes to the serial port, and refreshes the machine status.
         """
         self.reset_counter()
-        while True:
+        while self._serial_connection.is_serial_connected():
             self._handle_reading_from_serial()
             self._handle_writing_to_serial()
             self._fetch_machine_status()
@@ -263,11 +322,17 @@ class MachineConnector(Process):
         if not self.machine_connector_data.serial_write_queue.empty():
             type, gcode_command = self.machine_connector_data.serial_write_queue.get()
             if gcode_command:
-                # increase the counter to wait for
-                # an ok message after sending a command to the machine
-                self.machine_connector_data.ok_messages_counter += 1
-
-                self._serial_connection.write_to_serial(gcode_command)
+                is_real_time = type in {
+                    constants.REAL_TIME_COMMAND_DATA_TYPE,
+                    constants.MACHINE_STATUS_DATA_TYPE,
+                }
+                write_succeeded = self._serial_connection.write_to_serial(
+                    gcode_command,
+                    append_newline=not is_real_time,
+                )
+                if not write_succeeded:
+                    self.machine_connector_data.is_serial_connected = False
+                    self.reset_counter()
 
     def _handle_reading_from_serial(self):
         """
@@ -280,7 +345,39 @@ class MachineConnector(Process):
             if constants.GRBL_ANSWER_OK in data_to_fetch:
                 # decrease the counter because the machine replied
                 # with an ok message after sending a command to the machine
-                self.machine_connector_data.ok_messages_counter -= 1
+                if self.machine_connector_data.ok_messages_counter > 0:
+                    self.machine_connector_data.ok_messages_counter -= 1
+
+            elif data_to_fetch.lower().startswith("error"):
+                # GRBL errors acknowledge/reject the current line just like an
+                # "ok" response. Release that pending acknowledgement, then
+                # pause file streaming so the next line is never sent
+                # automatically. This mirrors UGS pausing on a rejected line.
+                if self.machine_connector_data.ok_messages_counter > 0:
+                    self.machine_connector_data.ok_messages_counter -= 1
+                self.machine_connector_data.is_machine_pause = True
+                self.machine_connector_data.has_command_error = True
+                self.add_to_serial_read_queue(
+                    constants.SERIAL_COMMAND_DATA_TYPE,
+                    constants.HIGH_PRIORITY_COMMAND,
+                    data_to_fetch,
+                )
+
+            elif data_to_fetch.lower().startswith("alarm"):
+                # GRBL entered alarm state (hard limit, spindle fault, etc.).
+                # Unlike error:, ALARM is an asynchronous event — it is not a
+                # direct reply to the last queued command. Clear the entire
+                # counter (not just decrement) so the execution loop doesn't
+                # wait indefinitely for an ok that will never arrive. Then halt
+                # streaming; GRBL in alarm ignores all motion commands until $X.
+                self.machine_connector_data.ok_messages_counter = 0
+                self.machine_connector_data.is_machine_pause = True
+                self.machine_connector_data.has_command_error = True
+                self.add_to_serial_read_queue(
+                    constants.SERIAL_COMMAND_DATA_TYPE,
+                    constants.HIGH_PRIORITY_COMMAND,
+                    data_to_fetch,
+                )
 
             # check if the machine's door is open (for the homing the machine process)
             elif self._is_machine_door_open_on_start and data_to_fetch.startswith('<Idle'):
@@ -316,8 +413,14 @@ class MachineConnector(Process):
                     self.stop_machine()
 
                 elif constants.SOFT_LIMITS_TRIGGER == data_to_fetch:
-                    # make sure that the counter stay updated if the command is not passed to the machine
+                    # RP2040 firmware rejected the move because it hit a soft
+                    # limit. Reset the counter so the ack loop doesn't stall,
+                    # then halt execution. Continuing from an unexpected position
+                    # would cause every subsequent move to go to the wrong
+                    # coordinate, making the head veer off during a layer scan.
                     self.reset_counter()
+                    self.machine_connector_data.is_machine_pause = True
+                    self.machine_connector_data.has_command_error = True
 
                 self.add_to_serial_read_queue(constants.SERIAL_COMMAND_DATA_TYPE,
                                               constants.LOW_PRIORITY_COMMAND,
@@ -353,6 +456,7 @@ class MachineConnector(Process):
 
         self.machine_connector_data.is_tool_change_process = False
         self.machine_connector_data.is_machine_pause = False
+        self.machine_connector_data.has_command_error = False
         self._flush_write_queue()
         self._flush_read_queue()
         self.reset_counter()
@@ -374,15 +478,3 @@ class MachineConnector(Process):
         # clear the write queue
         while not self.machine_connector_data.serial_read_queue.empty():
             self.machine_connector_data.serial_read_queue.get()
-
-    def _reconnect_to_serial(self):
-        """
-        Attempts to reconnect to the serial port every second until successful, then reruns the process.
-        """
-
-        while not self._serial_connection.is_serial_connected():
-            print('Trying to connect to serial...')
-            time.sleep(1)
-
-            # retry to run the process again
-            self.run()

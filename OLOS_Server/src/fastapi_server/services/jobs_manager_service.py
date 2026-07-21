@@ -20,7 +20,8 @@ class JobsManagerService:
         """
 
         if isinstance(response, dict) and not response.get('data').get('success'):
-            raise Exception(error_msg)
+            detail = response.get('data', {}).get('errorDetail', '')
+            raise Exception(detail or error_msg)
         return response
 
     @classmethod
@@ -120,6 +121,20 @@ class JobsManagerService:
                 }])
         response = shared_core_data.fastapi_write_queue.get()
         return cls._check_response(response, constants.ERROR_RENAME_JOB_PROCESS)
+
+    @classmethod
+    def save_file(cls, shared_core_data, filename, file_content):
+        """Request to save edited content for a job file."""
+
+        shared_core_data.fastapi_read_queue.put(
+            [constants.JOBS_MANAGER_DATA_TYPE,
+                {
+                    'process': constants.SAVE_JOB_PROCESS,
+                    'filename': filename,
+                    'file_content': file_content
+                }])
+        response = shared_core_data.fastapi_write_queue.get()
+        return cls._check_response(response, constants.ERROR_SAVE_JOB_PROCESS)
 
     @classmethod
     def start_file(cls, shared_core_data):

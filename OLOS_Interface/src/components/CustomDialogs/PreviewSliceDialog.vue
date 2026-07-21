@@ -10,6 +10,14 @@
       <q-card-section class="full-width dialog-header">
         <div class="text-h6">Slice Preview</div>
         <q-space />
+        <q-toggle
+          v-model="showMachineCoordinates"
+          dense
+          dark
+          color="warning"
+          label="Machine coordinates"
+          class="q-mr-sm"
+        />
         <q-btn icon="close" flat round dense v-close-popup />
       </q-card-section>
 
@@ -47,7 +55,7 @@ import { storeToRefs } from 'pinia';
 import { useDialogPluginComponent } from 'quasar';
 import { LayersRange } from 'src/interfaces/3D.slicing.interface';
 import { use3DSlicingStore } from 'src/stores/3d-slicing';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Constants } from 'src/constants';
 
 // The `useDialogPluginComponent` provides the necessary methods for a Quasar dialog.
@@ -84,6 +92,8 @@ const isSlicingGraphLoading = ref<boolean>(true);
  */
 const isGcodeError = ref<boolean>(false);
 
+const showMachineCoordinates = ref<boolean>(false);
+
 /**
  * A computed property that acts as a two-way binding for the `layersRange`.
  *
@@ -113,6 +123,9 @@ const onDialogShow = () => {
     slicingStore
       .createSlicingResultGraph(sliceContainer.value)
       .then(() => {
+        slicingStore.setMachineCoordinateOverlayVisibility(
+          showMachineCoordinates.value
+        );
         isSlicingGraphLoading.value = false;
       })
       .catch((e) => {
@@ -121,6 +134,10 @@ const onDialogShow = () => {
       });
   }
 };
+
+watch(showMachineCoordinates, (isVisible) => {
+  slicingStore.setMachineCoordinateOverlayVisibility(isVisible);
+});
 </script>
 <style scoped lang="scss">
 .dialog-card-size {

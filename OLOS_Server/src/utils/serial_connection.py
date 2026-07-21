@@ -58,6 +58,8 @@ class SerialConnection:
                     # set the serial connection
                     self._serial_connection = ser
                     self._is_connected = True
+                else:
+                    ser.close()
 
             except Exception as error:
                 print("Custom serial port error:", error)
@@ -74,6 +76,8 @@ class SerialConnection:
                     # set the serial connection
                     self._serial_connection = ser
                     self._is_connected = True
+                    break
+                ser.close()
 
             if os.getenv('ENV') == 'development':
                 print(f"Serial connected")
@@ -95,10 +99,22 @@ class SerialConnection:
             bool: True if the controller responds, False otherwise.
         """
 
-        # Get the current position of the machine
-        ser.write((constants.GRBL_COMMAND_STATUS + constants.NEWLINE).encode())
-        # Reading data from the serial port
+        # Opening the port can trigger a DTR reset on some boards (e.g. Arduino).
+        # Even on boards that don't reset, USB-serial enumeration adds latency.
+        # Wait long enough for the controller to boot and flush any startup noise.
+        time.sleep(2)
+        ser.flushInput()
+
+        # GRBL status is a real-time single-byte command. Appending a newline
+        # differs from UGS and can inject an unintended empty command.
+        ser.write(constants.GRBL_COMMAND_STATUS.encode())
+
+        # Use a generous timeout for the handshake — the normal 10 ms config
+        # value is designed for the tight polling loop, not for first connect.
+        original_timeout = ser.timeout
+        ser.timeout = 3
         data_from_serial = ser.readline().decode("utf-8").strip()
+        ser.timeout = original_timeout
 
         if data_from_serial:
             if os.getenv('ENV') == 'development':
@@ -158,7 +174,7 @@ class SerialConnection:
 
         return self._serial_connection.in_waiting
 
-    def write_to_serial(self, data):
+    def write_to_serial(self, data, append_newline=True):
         """
         Sends a command to the GRBL controller over serial.
 
@@ -170,10 +186,15 @@ class SerialConnection:
         """
 
         try:
-            self._serial_connection.write((data + constants.NEWLINE).encode())
-        except serial.SerialTimeoutException:
-            print("Write operation timed out")
+            if self._serial_connection is None:
+                return False
+            payload = data + constants.NEWLINE if append_newline else data
+            self._serial_connection.write(payload.encode())
+            return True
+        except (serial.SerialTimeoutException, serial.SerialException, OSError) as error:
+            print("Serial write failed:", error)
             self.disconnect_serial()
+            return False
 
     def read_from_serial(self):
         """
@@ -184,6 +205,8 @@ class SerialConnection:
         """
 
         try:
+            if self._serial_connection is None:
+                return None
             if self._serial_connection.in_waiting > 0:
                 return self._serial_connection.readline().decode("utf-8").strip()
             else:
@@ -197,11 +220,12 @@ class SerialConnection:
         Gracefully closes the active serial connection.
         """
 
-        if self._is_connected:
+        if self._serial_connection is not None:
             self._serial_connection.close()
             self._serial_connection = None
             self._is_connected = False
             print("Serial is disconnected")
 
         else:
+            self._is_connected = False
             print("Serial is already disconnected")

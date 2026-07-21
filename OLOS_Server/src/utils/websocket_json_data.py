@@ -103,7 +103,13 @@ class WebsocketJsonData:
         return json.dumps(dict, indent=2)
 
     @staticmethod
-    def parse_job_execution_command_to_json(command, line_index, total_lines, file_timer):
+    def parse_job_execution_command_to_json(
+        command,
+        line_index,
+        total_lines,
+        file_timer,
+        execution_state="acknowledged",
+    ):
         """
         Converts job execution command data into JSON (progress of executing a job).
 
@@ -122,6 +128,7 @@ class WebsocketJsonData:
                 "line_index": line_index,
                 "total_lines": total_lines,
                 "file_timer": file_timer,
+                "execution_state": execution_state,
                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
         return json.dumps(dict, indent=2)

@@ -20,7 +20,14 @@ class SliceService:
         """
 
         if isinstance(response, dict) and not response.get('data').get('success'):
-            raise Exception(error_msg)
+            data = response.get('data') or {}
+            detail = (
+                data.get('result')
+                or data.get('error')
+                or data.get('message')
+                or error_msg
+            )
+            raise Exception(detail)
         return response
 
     @classmethod

@@ -15,6 +15,8 @@ export interface Config {
   axis_directions: AxisDirections;
   /** Whether remote file uploads are enabled. */
   remote_file_uploader: boolean;
+  /** Whether a missing machine controller should block the interface. */
+  controller_required?: boolean;
   /** Settings specific to laser cutters. */
   laser_cutter_settings?: LaserCutterSettings;
   /** Settings specific to CNC machines. */
@@ -132,6 +134,23 @@ interface DitheringSettings {
 }
 
 /**
+ * @interface LaserCompensationConfig
+ * @description Configuration for laser compensation in line-by-line engraving mode.
+ */
+interface LaserCompensationConfig {
+  /** Allowable acceleration range (mm/s²). */
+  acceleration: {
+    min: number;
+    max: number;
+  };
+  /** Allowable feedrate range (mm/min). */
+  feedrate: {
+    min: number;
+    max: number;
+  };
+}
+
+/**
  * @interface GcodeGenerator
  * @description Configuration for G-code generation parameters.
  */
@@ -144,6 +163,8 @@ interface GcodeGenerator {
   material_thickness: MaterialThickness;
   /** Dithering settings for image engraving. */
   dithering_settings: DitheringSettings;
+  /** Laser compensation settings for line-by-line engraving mode. */
+  laser_compensation?: LaserCompensationConfig;
 }
 
 /**

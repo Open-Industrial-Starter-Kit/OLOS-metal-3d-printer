@@ -25,6 +25,18 @@
           <q-item-label>Models List</q-item-label>
         </q-item-section>
       </q-item>
+      <q-item clickable @click="handleCoordinateScaleHelper">
+        <q-item-section class="col-2">
+          <q-icon
+            v-if="isCoordinateScaleHelperVisible"
+            name="check"
+            size="xs"
+          />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Coordinate Scale</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item clickable @click="handleViewerHelper">
         <q-item-section class="col-2">
           <q-icon v-if="isViewerHelperVisible" name="check" size="xs" />
@@ -106,6 +118,7 @@ const slicingStore = use3DSlicingStore();
 const {
   selectedModel,
   isGridHelperVisible,
+  isCoordinateScaleHelperVisible,
   isModelsListVisible,
   isViewerHelperVisible,
   isAmbientLightHelperVisible,
@@ -129,6 +142,18 @@ const handleGridHelper = () => {
  */
 const handleModelsList = () => {
   isModelsListVisible.value = !isModelsListVisible.value;
+};
+
+/**
+ * Toggles the machine coordinate scale in the 3D scene.
+ */
+const handleCoordinateScaleHelper = () => {
+  if (isCoordinateScaleHelperVisible.value) {
+    slicingStore.removeCoordinateScaleHelper();
+  } else {
+    slicingStore.addCoordinateScaleHelper();
+  }
+  isCoordinateScaleHelperVisible.value = !isCoordinateScaleHelperVisible.value;
 };
 
 /**

@@ -37,8 +37,8 @@ machine_platform:
 
   # Coordinates for the platform's end point (maximum working area)
   end_point:
-    x: 100
-    y: 100
+    x: 96
+    y: 96
     z: 100
 
 machine_screen:
@@ -51,6 +51,7 @@ axis_directions:
   zInvert: true # Invert Z-axis movement if true
 
 remote_file_uploader: false # Enable remote file upload feature
+controller_required: false # Keep non-machine features available without a controller
 
 # --------- 3D Printer Settings ----------- #
 printer_settings:
@@ -163,3 +164,10 @@ laser_cutter_settings:
         block_distance: # Distance between dithering blocks (pixels)
           min: 0
           max: 10
+    laser_compensation: # Settings for line-by-line engraving mode laser compensation
+      acceleration: # Laser acceleration range (mm/s²)
+        min: 1
+        max: 10000
+      feedrate: # Feedrate range during engraving (mm/min)
+        min: 1
+        max: 100000

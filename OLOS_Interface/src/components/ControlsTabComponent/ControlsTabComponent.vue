@@ -6,6 +6,9 @@
       <jog-speed :config />
     </div>
     <jog-buttons :config />
+    <auxiliary-axes
+      v-if="config?.machine_type === Constants.MACHINE_TYPE.THREE_D_PRINTER"
+    />
     <tools-changer
       v-if="config?.machine_type !== Constants.MACHINE_TYPE.VINYL_CUTTER"
       :config="config"
@@ -19,6 +22,7 @@ import CriticalButtons from './components/CriticalButtonsComponent/CriticalButto
 import JogStep from './components/JogStepComponent/JogStep.vue';
 import JogSpeed from './components/JogSpeedComponent/JogSpeed.vue';
 import JogButtons from './components/JogButtonsComponent/JogButtons.vue';
+import AuxiliaryAxes from './components/AuxiliaryAxesComponent/AuxiliaryAxes.vue';
 import OverrideFileSettings from './components/OverrideSettingsComponent/OverrideSettings.vue';
 import ToolsChanger from './components/ToolsChangerComponent/ToolsChanger.vue';
 import { onMounted, ref } from 'vue';

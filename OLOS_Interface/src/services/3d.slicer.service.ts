@@ -46,6 +46,21 @@ export class ThreeDSlicer {
   private controls: MapControls;
   /** @private @property {THREE.Group} gridHelper - The grid representing the build platform. */
   private gridHelper: THREE.Group;
+  /** @private @property {THREE.Group} coordinateScaleHelper - Machine-coordinate scale overlay for placement. */
+  private coordinateScaleHelper: THREE.Group;
+  /** @private @property {THREE.Plane} printHeightPlane - Horizontal visual crop plane. */
+  private printHeightPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+  /** @private @property {THREE.Plane} printHeightLowerPlane - Lower horizontal visual crop plane. */
+  private printHeightLowerPlane = new THREE.Plane(
+    new THREE.Vector3(0, 1, 0),
+    0
+  );
+  /** @private @property {THREE.Group} printHeightPlaneHelper - Bed-sized crop-height guide. */
+  private printHeightPlaneHelper: THREE.Group;
+  /** @private @property {THREE.Group} printHeightLowerPlaneHelper - Lower bed-sized crop-height guide. */
+  private printHeightLowerPlaneHelper: THREE.Group;
+  /** @private @property {THREE.Group} printHeightCapGroup - Stencil meshes used to close the visual crop surface. */
+  private printHeightCapGroup = new THREE.Group();
   /** @private @property {number} platformWidth - The width of the build platform. */
   private platformWidth: number;
   /** @private @property {number} platformHeight - The height (depth) of the build platform. */
@@ -124,6 +139,7 @@ export class ThreeDSlicer {
 
     // 3. Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.localClippingEnabled = true;
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(platformWidth, platformHeight);
     this.renderer.domElement.id = 'threejs-canvas';
@@ -136,6 +152,16 @@ export class ThreeDSlicer {
     // 5. Grid
     this.gridHelper = this.createGrid();
     this.scene.add(this.gridHelper);
+    this.coordinateScaleHelper = this.createCoordinateScaleHelper();
+    this.coordinateScaleHelper.visible = false;
+    this.scene.add(this.coordinateScaleHelper);
+    this.printHeightPlaneHelper = this.createPrintHeightGuide(0xff9800);
+    this.printHeightPlaneHelper.visible = false;
+    this.printHeightLowerPlaneHelper = this.createPrintHeightGuide(0x2fbf71);
+    this.printHeightLowerPlaneHelper.visible = false;
+    this.scene.add(this.printHeightPlaneHelper);
+    this.scene.add(this.printHeightLowerPlaneHelper);
+    this.scene.add(this.printHeightCapGroup);
 
     // 6. View Helper
     this.viewHelper = new ViewportGizmo(this.camera, this.renderer);
@@ -187,6 +213,184 @@ export class ThreeDSlicer {
     );
   }
 
+  private createPrintHeightGuide(color: number) {
+    const guide = new THREE.Group();
+    const material = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+    });
+
+    if (
+      this.config.machine_type === Constants.MACHINE_TYPE.THREE_D_PRINTER &&
+      this.config.printer_settings?.job_previewer.platform_shape ===
+        Constants.THREE_D_PRINTER_PLATFORM_SHAPE.CIRCLE
+    ) {
+      const radius = Math.max(this.platformWidth, this.platformHeight) / 2;
+      const points: THREE.Vector3[] = [];
+      for (let index = 0; index < 96; index += 1) {
+        const angle = (index / 96) * Math.PI * 2;
+        points.push(
+          new THREE.Vector3(
+            Math.cos(angle) * radius,
+            0,
+            Math.sin(angle) * radius
+          )
+        );
+      }
+      guide.add(
+        new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints(points),
+          material
+        )
+      );
+    } else {
+      const halfWidth = this.platformWidth / 2;
+      const halfHeight = this.platformHeight / 2;
+      guide.add(
+        new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-halfWidth, 0, -halfHeight),
+            new THREE.Vector3(halfWidth, 0, -halfHeight),
+            new THREE.Vector3(halfWidth, 0, halfHeight),
+            new THREE.Vector3(-halfWidth, 0, halfHeight),
+          ]),
+          material
+        )
+      );
+    }
+
+    guide.renderOrder = 10;
+    return guide;
+  }
+
+  private createCoordinateScaleHelper() {
+    const group = new THREE.Group();
+    const tickStep = 10;
+    const labelStep = 20;
+    const bedWidth = this.platformWidth;
+    const bedHeight = this.platformHeight;
+    const origin = this.machineToScenePosition(0, 0, 0.35);
+    const xEnd = this.machineToScenePosition(bedWidth, 0, 0.35);
+    const yEnd = this.machineToScenePosition(0, bedHeight, 0.35);
+    const center = this.machineToScenePosition(bedWidth / 2, bedHeight / 2, 0.4);
+
+    group.add(this.createScaleLine(origin, xEnd, 0xff4b4b));
+    group.add(this.createScaleLine(origin, yEnd, 0x45d483));
+    group.add(this.createScaleCross(center, 2, 0xffd23f));
+    group.add(
+      this.createScaleLabel(
+        'Bed center X48 Y48',
+        center.clone().add(new THREE.Vector3(5, 2, 5))
+      )
+    );
+    group.add(
+      this.createScaleLabel(
+        'X0 Y0',
+        origin.clone().add(new THREE.Vector3(4, 2, -4))
+      )
+    );
+
+    for (let x = 0; x <= bedWidth; x += tickStep) {
+      const tickCenter = this.machineToScenePosition(x, 0, 0.4);
+      group.add(
+        this.createScaleLine(
+          tickCenter.clone().add(new THREE.Vector3(0, 0, -1.5)),
+          tickCenter.clone().add(new THREE.Vector3(0, 0, 1.5)),
+          0xff4b4b
+        )
+      );
+      if (x % labelStep === 0 || x === bedWidth) {
+        group.add(
+          this.createScaleLabel(
+            `X${x}`,
+            tickCenter.clone().add(new THREE.Vector3(0, 2, -5))
+          )
+        );
+      }
+    }
+
+    for (let y = 0; y <= bedHeight; y += tickStep) {
+      const tickCenter = this.machineToScenePosition(0, y, 0.4);
+      group.add(
+        this.createScaleLine(
+          tickCenter.clone().add(new THREE.Vector3(-1.5, 0, 0)),
+          tickCenter.clone().add(new THREE.Vector3(1.5, 0, 0)),
+          0x45d483
+        )
+      );
+      if (y % labelStep === 0 || y === bedHeight) {
+        group.add(
+          this.createScaleLabel(
+            `Y${y}`,
+            tickCenter.clone().add(new THREE.Vector3(5, 2, 0))
+          )
+        );
+      }
+    }
+
+    return group;
+  }
+
+  private machineToScenePosition(x: number, y: number, z = 0) {
+    return new THREE.Vector3(
+      x - this.platformWidth / 2,
+      z,
+      this.platformHeight / 2 - y
+    );
+  }
+
+  private createScaleLine(start: THREE.Vector3, end: THREE.Vector3, color: number) {
+    const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const material = new THREE.LineBasicMaterial({ color });
+    return new THREE.Line(geometry, material);
+  }
+
+  private createScaleCross(position: THREE.Vector3, size: number, color: number) {
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.add(
+      this.createScaleLine(
+        new THREE.Vector3(-size, 0, 0),
+        new THREE.Vector3(size, 0, 0),
+        color
+      )
+    );
+    group.add(
+      this.createScaleLine(
+        new THREE.Vector3(0, 0, -size),
+        new THREE.Vector3(0, 0, size),
+        color
+      )
+    );
+    return group;
+  }
+
+  private createScaleLabel(text: string, position: THREE.Vector3) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 48;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.fillStyle = 'rgba(0, 0, 0, 0.72)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#ffffff';
+      context.font = '20px Arial';
+      context.fillText(text, 8, 31);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.copy(position);
+    sprite.scale.set(10, 3, 1);
+    return sprite;
+  }
+
   /**
    * @private
    * @description Starts the animation loop for rendering the scene.
@@ -222,6 +426,15 @@ export class ThreeDSlicer {
   addNew3DModel = async (file: File) => {
     const object = (await this.load3DModel(file)) as THREE.Mesh;
     this.addModelToContainer(object);
+  };
+
+  /**
+   * Restores a model exported from a saved slicer project without recentering
+   * its baked machine-bed placement.
+   */
+  addSavedProjectModel = async (file: File) => {
+    const object = (await this.load3DModel(file, false)) as THREE.Mesh;
+    this.addModelToContainer(object, false);
   };
 
   /**
@@ -299,6 +512,191 @@ export class ThreeDSlicer {
   /** @description Hides the grid helper. */
   removeGridHelper = () => {
     this.gridHelper.visible = false;
+  };
+
+  /** Returns the highest occupied point above the build plate. */
+  getMaximumModelHeight = () => {
+    const bounds = new THREE.Box3();
+    let hasModel = false;
+    for (const model of this.uploadedModels) {
+      if (!model.object) continue;
+      model.object.updateMatrixWorld(true);
+      bounds.expandByObject(model.object);
+      hasModel = true;
+    }
+    return hasModel ? Math.max(0, bounds.max.y) : 0;
+  };
+
+  /**
+   * Visually clips uploaded models above a bed-relative height.
+   * Passing null restores the complete model.
+   */
+  setPrintHeightLimit = (height: number | null, lowerHeight = 0) => {
+    const clippingPlanes =
+      height == null
+        ? null
+        : [this.printHeightPlane, this.printHeightLowerPlane];
+    if (height != null) {
+      const lower = Math.max(0, Math.min(lowerHeight, height));
+      this.printHeightPlane.constant = height;
+      this.printHeightLowerPlane.constant = -lower;
+      this.printHeightPlaneHelper.position.y = height;
+      this.printHeightLowerPlaneHelper.position.y = lower;
+      this.printHeightPlaneHelper.visible = true;
+      this.printHeightLowerPlaneHelper.visible = true;
+      this.updatePrintHeightCap(height);
+    } else {
+      this.printHeightPlaneHelper.visible = false;
+      this.printHeightLowerPlaneHelper.visible = false;
+      this.clearPrintHeightCap();
+    }
+
+    for (const model of this.uploadedModels) {
+      model.object?.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(child.material)
+          ? child.material
+          : [child.material];
+        for (const material of materials) {
+          material.clippingPlanes = clippingPlanes;
+          material.clipShadows = true;
+          material.needsUpdate = true;
+        }
+      });
+    }
+  };
+
+  /**
+   * Closes the visual clipping surface in engraving mode. Stencil parity
+   * preserves true holes, so a cropped tube is capped as an annulus rather
+   * than a solid disk.
+   */
+  private updatePrintHeightCap(height: number) {
+    this.clearPrintHeightCap();
+    if (this.slicingStore.prusaSettings.engravingMode !== 'engraving') return;
+
+    const modelBounds = new THREE.Box3();
+    let hasModelBounds = false;
+    let renderOrder = 1;
+    for (const model of this.uploadedModels) {
+      model.object?.updateMatrixWorld(true);
+      if (model.object) {
+        modelBounds.expandByObject(model.object);
+        hasModelBounds = true;
+      }
+      model.object?.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+
+        const stencilGroup = this.createPrintHeightStencilGroup(
+          child,
+          renderOrder
+        );
+        this.printHeightCapGroup.add(stencilGroup);
+        renderOrder += 1;
+      });
+    }
+
+    if (!this.printHeightCapGroup.children.length || !hasModelBounds) return;
+
+    const capWidth = Math.max(0.01, modelBounds.max.x - modelBounds.min.x);
+    const capDepth = Math.max(0.01, modelBounds.max.z - modelBounds.min.z);
+    const capMargin = Math.max(0.05, Math.min(capWidth, capDepth) * 0.01);
+    const capMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb8b8b8,
+      metalness: 0,
+      roughness: 0.75,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+      stencilWrite: true,
+      stencilRef: 0,
+      stencilFunc: THREE.NotEqualStencilFunc,
+      stencilFail: THREE.ReplaceStencilOp,
+      stencilZFail: THREE.ReplaceStencilOp,
+      stencilZPass: THREE.ReplaceStencilOp,
+    });
+    const cap = new THREE.Mesh(
+      new THREE.PlaneGeometry(
+        capWidth + capMargin * 2,
+        capDepth + capMargin * 2
+      ),
+      capMaterial
+    );
+    cap.rotation.x = -Math.PI / 2;
+    cap.position.set(
+      (modelBounds.min.x + modelBounds.max.x) / 2,
+      height + 0.0001,
+      (modelBounds.min.z + modelBounds.max.z) / 2
+    );
+    cap.renderOrder = renderOrder + 1;
+    cap.onAfterRender = (renderer) => renderer.clearStencil();
+    this.printHeightCapGroup.add(cap);
+  }
+
+  private createPrintHeightStencilGroup(
+    source: THREE.Mesh,
+    renderOrder: number
+  ) {
+    const group = new THREE.Group();
+    const baseMaterial = new THREE.MeshBasicMaterial({
+      depthWrite: false,
+      depthTest: false,
+      colorWrite: false,
+      stencilWrite: true,
+      stencilFunc: THREE.AlwaysStencilFunc,
+    });
+
+    const backMaterial = baseMaterial.clone();
+    backMaterial.side = THREE.BackSide;
+    backMaterial.clippingPlanes = [this.printHeightPlane];
+    backMaterial.stencilFail = THREE.KeepStencilOp;
+    backMaterial.stencilZFail = THREE.KeepStencilOp;
+    backMaterial.stencilZPass = THREE.IncrementWrapStencilOp;
+
+    const frontMaterial = baseMaterial.clone();
+    frontMaterial.side = THREE.FrontSide;
+    frontMaterial.clippingPlanes = [this.printHeightPlane];
+    frontMaterial.stencilFail = THREE.KeepStencilOp;
+    frontMaterial.stencilZFail = THREE.KeepStencilOp;
+    frontMaterial.stencilZPass = THREE.DecrementWrapStencilOp;
+    baseMaterial.dispose();
+
+    for (const material of [backMaterial, frontMaterial]) {
+      const stencilMesh = new THREE.Mesh(source.geometry, material);
+      stencilMesh.matrixAutoUpdate = false;
+      stencilMesh.matrix.copy(source.matrixWorld);
+      stencilMesh.renderOrder = renderOrder;
+      group.add(stencilMesh);
+    }
+
+    return group;
+  }
+
+  private clearPrintHeightCap() {
+    for (const child of [...this.printHeightCapGroup.children]) {
+      child.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        materials.forEach((material) => material.dispose());
+        if (object.parent === this.printHeightCapGroup) {
+          object.geometry.dispose();
+        }
+      });
+      this.printHeightCapGroup.remove(child);
+    }
+  }
+
+  /** @description Makes the machine coordinate scale visible. */
+  addCoordinateScaleHelper = () => {
+    this.coordinateScaleHelper.visible = true;
+  };
+
+  /** @description Hides the machine coordinate scale. */
+  removeCoordinateScaleHelper = () => {
+    this.coordinateScaleHelper.visible = false;
   };
 
   /** @description Makes the view helper (orientation gizmo) visible and enabled. */
@@ -698,7 +1096,7 @@ export class ThreeDSlicer {
    * @param {File} file - The file to load.
    * @returns {Promise<THREE.Object3D>} A promise that resolves with the loaded 3D object.
    */
-  private load3DModel = async (file: File) => {
+  private load3DModel = async (file: File, centerGeometry = true) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
 
@@ -712,7 +1110,7 @@ export class ThreeDSlicer {
           case 'stl':
             loader = new STLLoader();
             const stlGeometry = loader.parse(contents as ArrayBuffer);
-            stlGeometry.center();
+            if (centerGeometry) stlGeometry.center();
             const stlMesh = new THREE.Mesh(
               stlGeometry,
               new THREE.MeshStandardMaterial()
@@ -768,7 +1166,10 @@ export class ThreeDSlicer {
    * helper creation, positioning, and state updates.
    * @param {THREE.Mesh | null} object - The mesh to add.
    */
-  private addModelToContainer = (object: THREE.Mesh | null) => {
+  private addModelToContainer = (
+    object: THREE.Mesh | null,
+    centralize = true
+  ) => {
     if (object) {
       this.resetSelectedModel();
 
@@ -783,7 +1184,7 @@ export class ThreeDSlicer {
       this.layModelFlat(model);
       this.placeModelOnPlatform(model);
       this.checkIfModelOutsidePlatform(model);
-      this.centralizeModel(model);
+      if (centralize) this.centralizeModel(model);
 
       this.scene.add(object);
       this.uploadedModels.push(model);

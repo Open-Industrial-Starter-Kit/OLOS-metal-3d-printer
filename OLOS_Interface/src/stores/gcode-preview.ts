@@ -77,6 +77,9 @@ export const useGcodePreviewStore = defineStore('gcodePreview', {
 
     /** Flag for the camera stream status */
     isCameraStreamActive: false,
+
+    /** Modal G0/G1/G2/G3 mode used to match live commands to drawn moves. */
+    executionMotionMode: '' as string,
   }),
 
   actions: {
@@ -296,6 +299,28 @@ export const useGcodePreviewStore = defineStore('gcodePreview', {
     },
 
     /**
+     * Returns true when a controller-acknowledged command corresponds to a
+     * drawable XYZ move in the preview. Feed-only, comments, M-codes, G53,
+     * G92, and auxiliary A/B moves must not advance the highlight cursor.
+     */
+    isDrawableMotionCommand(command: string) {
+      const code = command.split(';', 1)[0].trim();
+      if (!code) return false;
+
+      const explicitMotion = code.match(
+        /^G0?([0123])(?=\s|[XYZABFIJKR]|$)/i
+      );
+      if (explicitMotion) {
+        this.executionMotionMode = `G${explicitMotion[1]}`;
+      } else if (/^G(?:53|92)(?=\s|[XYZAB]|$)/i.test(code)) {
+        return false;
+      }
+
+      if (!this.executionMotionMode) return false;
+      return /[XYZ]-?(?:\d|\.)/i.test(code);
+    },
+
+    /**
      * Adds auxiliary tools like grid, camera frames, and labels to the graph.
      */
     async addGraphTools() {
@@ -470,6 +495,7 @@ export const useGcodePreviewStore = defineStore('gcodePreview', {
       this.isGcodeBiggerThanPlatform = false;
       this.isGcodeError = false;
       this.isNewFileToDraw = true;
+      this.executionMotionMode = '';
       this.previewWebWorker?.terminate();
       this.previewWebWorker = null;
     },

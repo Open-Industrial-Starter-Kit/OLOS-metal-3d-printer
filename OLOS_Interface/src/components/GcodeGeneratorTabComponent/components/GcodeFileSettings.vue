@@ -181,6 +181,201 @@
             v-model:is-valid-speed="isValidMovementSpeedEngraving"
           />
 
+          <!-- Engraving Mode Toggle -->
+          <div class="row items-center q-gutter-x-md q-mt-md">
+            <span class="sub-text-size">Engraving Mode:</span>
+            <q-btn-toggle
+              v-model="engravingMode"
+              toggle-color="primary"
+              :options="[
+                { label: 'Vectoring', value: 'vectoring' },
+                { label: 'Line by Line (Engraving)', value: 'engraving' },
+              ]"
+            />
+          </div>
+
+          <!-- Laser Compensation Settings (shown when engraving mode is selected) -->
+          <transition
+            appear
+            enter-active-class="animated slideInDown"
+            v-if="engravingMode === 'engraving'"
+          >
+            <div class="column q-gutter-y-md q-mt-md">
+              <q-separator />
+              <p class="title-text-size text-bold">
+                <u>Laser Compensation (Line by Line):</u>
+              </p>
+              <p class="note sub-text-size">
+                Configure laser in/out compensation for each layer type. Distance
+                is calculated using: d = v²/(2a)
+              </p>
+
+              <!-- First Layer -->
+              <div class="column q-gutter-y-sm">
+                <p class="text-bold">First Layer:</p>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Acceleration (mm/s²):
+                  </span>
+                  <q-input
+                    v-model.number="laserCompensationFirstAcceleration"
+                    type="number"
+                    filled
+                    dense
+                    class="col"
+                    @update:model-value="
+                      (val) => {
+                        isValidLaserCompensationFirstAcceleration =
+                          val != null && val > 0;
+                      }
+                    "
+                  />
+                </div>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Feedrate (mm/min):
+                  </span>
+                  <q-input
+                    v-model.number="laserCompensationFirstFeedrate"
+                    type="number"
+                    filled
+                    dense
+                    class="col"
+                    @update:model-value="
+                      (val) => {
+                        isValidLaserCompensationFirstFeedrate =
+                          val != null && val >= 0;
+                      }
+                    "
+                  />
+                </div>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Calculated Distance (mm):
+                  </span>
+                  <span class="text-primary">
+                    {{
+                      calculateLaserDistance(
+                        laserCompensationFirstFeedrate,
+                        laserCompensationFirstAcceleration
+                      )?.toFixed(4) ?? 'N/A'
+                    }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Intermediate Layer -->
+              <q-separator />
+              <div class="column q-gutter-y-sm">
+                <p class="text-bold">Intermediate Layers:</p>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Acceleration (mm/s²):
+                  </span>
+                  <q-input
+                    v-model.number="laserCompensationIntermediateAcceleration"
+                    type="number"
+                    filled
+                    dense
+                    class="col"
+                    @update:model-value="
+                      (val) => {
+                        isValidLaserCompensationIntermediateAcceleration =
+                          val != null && val > 0;
+                      }
+                    "
+                  />
+                </div>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Feedrate (mm/min):
+                  </span>
+                  <q-input
+                    v-model.number="laserCompensationIntermediateFeedrate"
+                    type="number"
+                    filled
+                    dense
+                    class="col"
+                    @update:model-value="
+                      (val) => {
+                        isValidLaserCompensationIntermediateFeedrate =
+                          val != null && val >= 0;
+                      }
+                    "
+                  />
+                </div>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Calculated Distance (mm):
+                  </span>
+                  <span class="text-primary">
+                    {{
+                      calculateLaserDistance(
+                        laserCompensationIntermediateFeedrate,
+                        laserCompensationIntermediateAcceleration
+                      )?.toFixed(4) ?? 'N/A'
+                    }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Bulk Layer -->
+              <q-separator />
+              <div class="column q-gutter-y-sm">
+                <p class="text-bold">Bulk Layers:</p>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Acceleration (mm/s²):
+                  </span>
+                  <q-input
+                    v-model.number="laserCompensationBulkAcceleration"
+                    type="number"
+                    filled
+                    dense
+                    class="col"
+                    @update:model-value="
+                      (val) => {
+                        isValidLaserCompensationBulkAcceleration =
+                          val != null && val > 0;
+                      }
+                    "
+                  />
+                </div>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Feedrate (mm/min):
+                  </span>
+                  <q-input
+                    v-model.number="laserCompensationBulkFeedrate"
+                    type="number"
+                    filled
+                    dense
+                    class="col"
+                    @update:model-value="
+                      (val) => {
+                        isValidLaserCompensationBulkFeedrate =
+                          val != null && val >= 0;
+                      }
+                    "
+                  />
+                </div>
+                <div class="row items-center q-gutter-x-md">
+                  <span class="sub-text-size" style="min-width: 150px">
+                    Calculated Distance (mm):
+                  </span>
+                  <span class="text-primary">
+                    {{
+                      calculateLaserDistance(
+                        laserCompensationBulkFeedrate,
+                        laserCompensationBulkAcceleration
+                      )?.toFixed(4) ?? 'N/A'
+                    }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </transition>
+
           <engrave-dithering-settings
             :config
             v-model:algorithm="ditheringAlgorithm"
@@ -314,6 +509,10 @@ const laserToolEngraving = ref<string>(
   imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
     .tool ?? ''
 );
+const engravingMode = ref<'vectoring' | 'engraving'>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .engravingMode ?? 'vectoring'
+);
 const ditheringAlgorithm = ref<string>(
   imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
     .dithering.algorithm ?? ''
@@ -336,6 +535,35 @@ const ditheringBlockDistance = ref<number>(
 );
 
 /**
+ * Reactive variables for laser compensation settings (line-by-line engraving mode).
+ * Each layer type (first, intermediate, bulk) has acceleration and feedrate.
+ */
+const laserCompensationFirstAcceleration = ref<number>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .laserCompensation?.first.acceleration ?? 0
+);
+const laserCompensationFirstFeedrate = ref<number>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .laserCompensation?.first.feedrate ?? 0
+);
+const laserCompensationIntermediateAcceleration = ref<number>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .laserCompensation?.intermediate.acceleration ?? 0
+);
+const laserCompensationIntermediateFeedrate = ref<number>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .laserCompensation?.intermediate.feedrate ?? 0
+);
+const laserCompensationBulkAcceleration = ref<number>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .laserCompensation?.bulk.acceleration ?? 0
+);
+const laserCompensationBulkFeedrate = ref<number>(
+  imageToGcodeConvertorStore.activeImage?.gcodeSettings.engravingSettings
+    .laserCompensation?.bulk.feedrate ?? 0
+);
+
+/**
  * Reactive flags for validating the input fields.
  * They are all initialized to `true` to enable the save button by default.
  */
@@ -346,6 +574,34 @@ const isValidMovementSpeedMarking = ref<boolean>(true);
 const isValidLaserPowerEngraving = ref<boolean>(true);
 const isValidMovementSpeedEngraving = ref<boolean>(true);
 const isValidDitheringResolution = ref<boolean>(true);
+const isValidLaserCompensationFirstAcceleration = ref<boolean>(true);
+const isValidLaserCompensationFirstFeedrate = ref<boolean>(true);
+const isValidLaserCompensationIntermediateAcceleration = ref<boolean>(true);
+const isValidLaserCompensationIntermediateFeedrate = ref<boolean>(true);
+const isValidLaserCompensationBulkAcceleration = ref<boolean>(true);
+const isValidLaserCompensationBulkFeedrate = ref<boolean>(true);
+
+/**
+ * Calculates the laser in/out distance using the formula: d = v²/(2a)
+ * where v is the velocity (feedrate) and a is the acceleration.
+ *
+ * @param feedrate - Feedrate in mm/min (converted to mm/s)
+ * @param acceleration - Acceleration in mm/s²
+ * @returns - The calculated distance in mm, or null if inputs are invalid
+ */
+const calculateLaserDistance = (
+  feedrate: number,
+  acceleration: number
+): number | null => {
+  if (acceleration <= 0 || feedrate < 0) {
+    return null;
+  }
+  // Convert feedrate from mm/min to mm/s
+  const velocityMmPerSec = feedrate / 60;
+  // Apply formula: d = v²/(2a)
+  const distance = (velocityMmPerSec * velocityMmPerSec) / (2 * acceleration);
+  return distance;
+};
 
 /**
  * Saves the current settings to the active image's G-code settings.
@@ -390,6 +646,8 @@ const handleSavingSettings = () => {
       laserPowerEngraving.value;
     imageToGcodeConvertorStore.activeImage.gcodeSettings.engravingSettings.tool =
       laserToolEngraving.value;
+    imageToGcodeConvertorStore.activeImage.gcodeSettings.engravingSettings.engravingMode =
+      engravingMode.value;
     imageToGcodeConvertorStore.activeImage.gcodeSettings.mainSettings.thickness =
       selectedMaterialThickness.value.thicknessValue;
     imageToGcodeConvertorStore.activeImage.gcodeSettings.engravingSettings.dithering =
@@ -400,6 +658,43 @@ const handleSavingSettings = () => {
         blockSize: ditheringBlockSize.value,
         blockDistance: ditheringBlockDistance.value,
       };
+
+    // laser compensation settings for engraving mode
+    if (engravingMode.value === 'engraving') {
+      imageToGcodeConvertorStore.activeImage.gcodeSettings.engravingSettings.laserCompensation =
+        {
+          first: {
+            layerType: 'first',
+            acceleration: laserCompensationFirstAcceleration.value,
+            feedrate: laserCompensationFirstFeedrate.value,
+            calculatedDistance:
+              calculateLaserDistance(
+                laserCompensationFirstFeedrate.value,
+                laserCompensationFirstAcceleration.value
+              ) ?? 0,
+          },
+          intermediate: {
+            layerType: 'intermediate',
+            acceleration: laserCompensationIntermediateAcceleration.value,
+            feedrate: laserCompensationIntermediateFeedrate.value,
+            calculatedDistance:
+              calculateLaserDistance(
+                laserCompensationIntermediateFeedrate.value,
+                laserCompensationIntermediateAcceleration.value
+              ) ?? 0,
+          },
+          bulk: {
+            layerType: 'bulk',
+            acceleration: laserCompensationBulkAcceleration.value,
+            feedrate: laserCompensationBulkFeedrate.value,
+            calculatedDistance:
+              calculateLaserDistance(
+                laserCompensationBulkFeedrate.value,
+                laserCompensationBulkAcceleration.value
+              ) ?? 0,
+          },
+        };
+    }
 
     changeProfileOptions();
 
@@ -482,7 +777,7 @@ const changeProfileOptions = () => {
  * A computed property that determines if the "Save" button should be disabled.
  *
  * The button is disabled if any of the validation flags for laser power,
- * movement speed, or dithering resolution are `false`.
+ * movement speed, dithering resolution, or laser compensation are `false`.
  *
  * @returns {boolean} - `true` if the button should be disabled, `false` otherwise.
  */
@@ -495,7 +790,13 @@ const isSaveButtonDisabled = computed(
       isValidMovementSpeedCutting.value &&
       isValidMovementSpeedMarking.value &&
       isValidMovementSpeedEngraving.value &&
-      isValidDitheringResolution.value
+      isValidDitheringResolution.value &&
+      isValidLaserCompensationFirstAcceleration.value &&
+      isValidLaserCompensationFirstFeedrate.value &&
+      isValidLaserCompensationIntermediateAcceleration.value &&
+      isValidLaserCompensationIntermediateFeedrate.value &&
+      isValidLaserCompensationBulkAcceleration.value &&
+      isValidLaserCompensationBulkFeedrate.value
     )
 );
 
@@ -542,6 +843,29 @@ const handleThicknessChange = (thickness: MaterialThickness | null) => {
             ditheringGrayShift.value = operation.dithering.grayShift;
             ditheringBlockSize.value = operation.dithering.blockSize;
             ditheringBlockDistance.value = operation.dithering.blockDistance;
+          }
+          // Load engraving mode and laser compensation if available
+          if ('engravingMode' in operation) {
+            engravingMode.value = (operation as any).engravingMode ?? 'vectoring';
+          }
+          if ((operation as any).laserCompensation) {
+            const compensation = (operation as any).laserCompensation;
+            if (compensation.first) {
+              laserCompensationFirstAcceleration.value =
+                compensation.first.acceleration;
+              laserCompensationFirstFeedrate.value = compensation.first.feedrate;
+            }
+            if (compensation.intermediate) {
+              laserCompensationIntermediateAcceleration.value =
+                compensation.intermediate.acceleration;
+              laserCompensationIntermediateFeedrate.value =
+                compensation.intermediate.feedrate;
+            }
+            if (compensation.bulk) {
+              laserCompensationBulkAcceleration.value =
+                compensation.bulk.acceleration;
+              laserCompensationBulkFeedrate.value = compensation.bulk.feedrate;
+            }
           }
           break;
       }

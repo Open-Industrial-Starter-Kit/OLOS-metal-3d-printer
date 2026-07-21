@@ -176,6 +176,7 @@ class CoreConstants:
     DELETE_JOB_PROCESS = "Delete"
     DOWNLOAD_JOB_PROCESS = "Download"
     RENAME_JOB_PROCESS = "Rename"
+    SAVE_JOB_PROCESS = "Save"
     CHECK_JOB_PROCESS = "Check"
     GENERATE_JOB_PROCESS = "Generate"
     CANCEL_GENERATE_JOB_PROCESS = "Cancel"

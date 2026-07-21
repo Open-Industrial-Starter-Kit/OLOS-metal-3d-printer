@@ -1,4 +1,4 @@
-from typing import Dict, List,  Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 
@@ -51,6 +51,13 @@ class RenameJobData(BaseModel):
 
     old_filename: str = ''
     new_filename: str = ''
+
+
+class SaveJobData(BaseModel):
+    """Represents edited G-code content to save for a job file."""
+
+    filename: str = ''
+    file_content: str = ''
 
 
 class USBJobFileData(BaseModel):
@@ -208,6 +215,16 @@ class ModifiedImageData(BaseModel):
     modifiedSVGMarking: Optional[str] = None
     modifiedEngravingImage: Optional[str] = None
     gcodeSettings: GcodeFileSettings
+
+
+class JobProjectData(BaseModel):
+    """Internal slicer project data stored beside a generated G-code job."""
+
+    version: int = 1
+    modelFile: str
+    slicingSettings: Dict[str, Any]
+    printHeightLowerLimit: Optional[float] = None
+    printHeightLimit: Optional[float] = None
 
 
 class GcodeFileData(BaseModel):

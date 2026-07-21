@@ -64,8 +64,10 @@ class SharedMachineData:
             'serial_read_queue': manager.PriorityQueueWithCounter(),
             'serial_write_queue': manager.PriorityQueueWithCounter(),
             'ok_messages_counter': manager.Value('i', 0),
+            'is_serial_connected': manager.Value('b', False),
             'is_tool_change_process': manager.Value('b', False),
             'is_machine_pause': manager.Value('b', False),
+            'has_command_error': manager.Value('b', False),
             'is_job_execute_process': manager.Value('b', False)
         }
 
@@ -89,6 +91,15 @@ class SharedMachineData:
         self._data['ok_messages_counter'].value = value
 
     @property
+    def is_serial_connected(self):
+        """bool: True only while the controller serial port is usable."""
+        return self._data['is_serial_connected'].value
+
+    @is_serial_connected.setter
+    def is_serial_connected(self, value):
+        self._data['is_serial_connected'].value = value
+
+    @property
     def is_tool_change_process(self):
         """bool: Flag indicating if a tool change is in progress."""
         return self._data['is_tool_change_process'].value
@@ -105,6 +116,15 @@ class SharedMachineData:
     @is_machine_pause.setter
     def is_machine_pause(self, value):
         self._data['is_machine_pause'].value = value
+
+    @property
+    def has_command_error(self):
+        """bool: True when GRBL rejected the current streamed command."""
+        return self._data['has_command_error'].value
+
+    @has_command_error.setter
+    def has_command_error(self, value):
+        self._data['has_command_error'].value = value
 
     @property
     def is_job_execute_process(self):

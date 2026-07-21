@@ -104,6 +104,34 @@ export interface DitheringSettings {
 }
 
 /**
+ * @interface LaserCompensationLayer
+ * @description Laser compensation settings for a specific layer type.
+ */
+export interface LaserCompensationLayer {
+  /** Layer type identifier (e.g., "first", "intermediate", "bulk"). */
+  layerType: string;
+  /** Acceleration in mm/s² for laser control. */
+  acceleration: number;
+  /** Feedrate in mm/min for movement during engraving. */
+  feedrate: number;
+  /** Calculated laser in/out distance based on formula: d = v²/(2a). */
+  calculatedDistance: number;
+}
+
+/**
+ * @interface LaserCompensation
+ * @description Laser compensation settings for line-by-line engraving mode.
+ */
+export interface LaserCompensation {
+  /** First layer laser compensation settings. */
+  first: LaserCompensationLayer;
+  /** Intermediate layers laser compensation settings. */
+  intermediate: LaserCompensationLayer;
+  /** Bulk layers laser compensation settings. */
+  bulk: LaserCompensationLayer;
+}
+
+/**
  * @interface TransformData
  * @description Stores transformation values applied to an image or element.
  */
@@ -207,8 +235,12 @@ export interface MainSettings {
  * @description Settings for engraving operations.
  */
 export interface EngravingSettings extends OperationMainSettings {
+  /** Engraving mode: "vectoring" for traditional vectoring or "engraving" for line-by-line engraving. */
+  engravingMode: 'vectoring' | 'engraving';
   /** Dithering settings for engraving. */
   dithering: DitheringSettings;
+  /** Laser compensation settings for line-by-line engraving mode. */
+  laserCompensation?: LaserCompensation;
 }
 
 /**

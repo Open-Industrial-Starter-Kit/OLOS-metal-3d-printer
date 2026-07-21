@@ -139,15 +139,21 @@ export const useJobsFilesManagementStore = defineStore('jobsFilesManager', {
      * Throws an error if the API call fails.
      */
     async openFile() {
+      const filename = this.selectedFilename;
+
+      if (!filename) {
+        throw new Error('Please select a job file before opening it.');
+      }
+
       try {
         this.isFileLoading = true;
-        this.fileData.fileName = this.selectedFilename;
 
-        const res = (await API.openFile(this.fileData.fileName)).data;
+        const res = (await API.openFile(filename)).data;
 
         this.isFileOpen = true;
         this.fileData = { ...res.data.fileData };
-        this.isFileLoading = false;
+        this.selectedFilename = this.fileData.fileName;
+        this.isFileSelected = true;
 
         this.debuggerStore.addLog(
           new Date(),
@@ -168,6 +174,9 @@ export const useJobsFilesManagementStore = defineStore('jobsFilesManager', {
               error.response?.data.detail
           );
         }
+        throw error;
+      } finally {
+        this.isFileLoading = false;
       }
     },
 
@@ -308,6 +317,48 @@ export const useJobsFilesManagementStore = defineStore('jobsFilesManager', {
     },
 
     /**
+     * Saves edited G-code content for a job file.
+     * Updates the opened file data and file list so preview and metadata refresh.
+     * @param filename - The name of the file to save.
+     * @param fileContent - Edited G-code content.
+     */
+    async saveFile(filename: string, fileContent: string) {
+      try {
+        this.isFileLoading = true;
+        const res = (await API.saveFile(filename, fileContent)).data;
+
+        this.isFileOpen = true;
+        this.fileData = { ...res.data.fileData };
+        this.selectedFilename = this.fileData.fileName;
+        this.isFileSelected = true;
+        this.filesListData = res.data.filesListData;
+
+        this.debuggerStore.addLog(
+          new Date(),
+          res.type,
+          res.data.process,
+          `${res.data.fileData.fileName} ${Constants.API_SUCCESS_MESSAGES.SAVE_MESSAGE}`
+        );
+      } catch (error: AxiosError | unknown) {
+        if (axios.isAxiosError(error)) {
+          this.debuggerStore.addLog(
+            new Date(),
+            Constants.JOBS_MANAGER_DATA_TYPE,
+            Constants.JOBS_MANAGER_ERRORS.SAVE_FILE,
+            error.response?.data.detail
+          );
+          throw new Error(
+            Constants.API_ERROR_MESSAGES.SAVE_MESSAGE +
+              error.response?.data.detail
+          );
+        }
+        throw error;
+      } finally {
+        this.isFileLoading = false;
+      }
+    },
+
+    /**
      * Uploads a job file from a USB path to the backend.
      * Updates files list and logs the upload event.
      * Throws an error if the API call fails.
@@ -338,6 +389,39 @@ export const useJobsFilesManagementStore = defineStore('jobsFilesManager', {
               error.response?.data.detail
           );
         }
+      }
+    },
+
+    /**
+     * Uploads a local G-code job file from the PC into the backend job store.
+     * @param file - Local file selected by the user.
+     */
+    async uploadJobFile(file: File) {
+      try {
+        const res = (await API.uploadJobFile(file)).data;
+
+        this.debuggerStore.addLog(
+          new Date(),
+          res.type,
+          res.data.process,
+          `${file.name} ${Constants.API_SUCCESS_MESSAGES.UPLOAD_MESSAGE}`
+        );
+
+        this.filesListData = res.data.filesListData;
+      } catch (error: AxiosError | unknown) {
+        if (axios.isAxiosError(error)) {
+          this.debuggerStore.addLog(
+            new Date(),
+            Constants.JOBS_MANAGER_DATA_TYPE,
+            Constants.JOBS_MANAGER_ERRORS.UPLOAD_FILE,
+            error.response?.data.detail
+          );
+          throw new Error(
+            Constants.API_ERROR_MESSAGES.UPLOAD_MESSAGE +
+              error.response?.data.detail
+          );
+        }
+        throw error;
       }
     },
 

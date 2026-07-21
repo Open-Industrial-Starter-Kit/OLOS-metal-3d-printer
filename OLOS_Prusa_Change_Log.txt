@@ -365,3 +365,1053 @@ Validation
 ----------
 - Backend Python compile passed for the changed Prusa slicing and API model files.
 - Frontend yarn lint passed.
+
+
+Prusa Bed-Centering and Coordinate Overlay Update - 2026-06-03
+==============================================================
+
+Purpose
+-------
+- Fixed the mismatch between the circular 96 mm preview bed and exported Prusa G-code coordinates.
+- The old Prusa output kept sliced geometry in model-local coordinates near X0/Y0, so a print could appear visually acceptable but physically run outside the circular bed.
+- Added preview/placement coordinate overlays so machine origin, bed center, and scale can be checked before and after slicing.
+
+OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+---------------------------------------------------------------
+- Added Prusa bed-centering for generated vector regions before contour and infill G-code generation.
+- Uses a 96 mm x 96 mm machine bed frame by default.
+- Translates each layer so the model center lands at machine X48 Y48, matching the actual 96 mm circular bed center.
+- Updated layer bounds passed into G-code generation to use bed-size bounds instead of model-local bounds.
+- Verified with benchy_fixed_center.nc:
+  - Print X range: 20.636 to 75.2489 mm.
+  - Print Y range: 33.5389 to 62.5106 mm.
+  - Print center: X47.942, Y48.025.
+  - Offset from bed center: X -0.058 mm, Y +0.025 mm.
+  - Max print radius from X48/Y48: 29.013 mm.
+  - Exposure moves outside the 96 mm circular bed: 0.
+
+OLOS_Interface/src/services/gcode.previewer.service/gcode.3D.previewer.service.ts
+---------------------------------------------------------------------------------
+- Added a machine-coordinate overlay for the slice preview.
+- Added markers and labels for:
+  - X0 Y0 origin.
+  - Bed center X48 Y48.
+  - X+ and Y+ axes.
+  - 96 mm circular bed reference.
+  - A yellow laser-head marker.
+- Changed slice preview placement so slice G-code is shown in the same machine coordinate frame used by the generated G-code.
+- The slice preview now maps machine X48/Y48 to the center of the circular bed instead of visually recentering the job and hiding placement errors.
+- The laser-head marker follows the last visible toolpath endpoint for the current visible layer range.
+
+OLOS_Interface/src/components/CustomDialogs/PreviewSliceDialog.vue
+------------------------------------------------------------------
+- Added a "Machine coordinates" toggle in the Slice Preview header.
+- The toggle turns the slice preview coordinate overlay on/off without changing the generated G-code or redrawing the slice.
+
+OLOS_Interface/src/stores/3d-slicing.ts
+---------------------------------------
+- Added store methods to control slice preview machine-coordinate overlay visibility.
+- Added store state and actions for the model-placement coordinate scale overlay.
+
+OLOS_Interface/src/services/3d.slicer.service.ts
+------------------------------------------------
+- Added a model-placement coordinate scale overlay for the main slicer view before slicing.
+- The overlay uses the same machine coordinate mapping as the G-code output:
+  - Machine X48/Y48 is the center of the 96 mm circular bed.
+  - Machine X0/Y0 is the origin reference.
+- Added X and Y scale lines, tick marks every 10 mm, labels every 20 mm, and a bed-center marker.
+- Added service methods to show/hide the coordinate scale overlay.
+
+OLOS_Interface/src/components/3DSlicingTabComponent/components/MainToolsBar/components/ViewTools.vue
+---------------------------------------------------------------------------------------------------
+- Added a new View menu item: Coordinate Scale.
+- The toggle allows checking machine coordinates while positioning a model before slicing.
+
+Validation
+----------
+- Frontend yarn lint passed after the preview overlay and placement coordinate scale changes.
+- Backend Python compile passed after the Prusa bed-centering update.
+- benchy_fixed_center.nc was checked against a 96 mm circular bed centered at X48/Y48:
+  - Exposure-block XY moves outside the bed: 0.
+  - Radial safety margin: about 18.987 mm.
+Jobs Manager Slicer Project Persistence - 2026-06-08
+
+Files changed:
+- OLOS_Interface/src/components/JobsFilesManagementTabComponent/components/JobsFilesButtons.vue
+- OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+- OLOS_Interface/src/services/API.service.ts
+- OLOS_Interface/src/services/3d.slicer.service.ts
+- OLOS_Interface/src/stores/3d-slicing.ts
+- OLOS_Interface/src/stores/jobs-files-management.ts
+- OLOS_Server/src/fastapi_server/api/jobs_manager_api.py
+- OLOS_Server/src/fastapi_server/models/jobs_manager_model.py
+
+Detailed changes:
+- Saving a newly sliced G-code job now also saves an internal slicer project sidecar.
+- The sidecar stores the transformed STL model and the complete active slicing settings, including the selected slicer library and Prusa/Slic3r/PySLM settings.
+- Internal project files use the hidden suffix ".olos-project.json" and are stored beside the G-code job. They are not included in the Jobs Manager file table because they are not G-code files.
+- Added an "Open in Slicer" button to Jobs Manager. It restores the saved model, slicer selection, profile name, and print settings, then opens the 3D Slicing tab.
+- The normal "Open Job" action remains the G-code preview action.
+- The normal Download action still downloads only the selected G-code file. It does not download the model or settings sidecar.
+- Restored project STL files use a dedicated loader path that preserves their baked machine-bed placement instead of recentering them like newly uploaded models.
+- Renaming a G-code job also renames its project sidecar. Deleting a G-code job also deletes its project sidecar.
+- Existing standalone G-code jobs remain supported for preview and execution. If they were saved before project persistence was added, "Open in Slicer" reports that no saved model/settings are available.
+- Job filenames are URL-encoded for open, delete, download, project save/load, and slice-save requests.
+- Failed Open Job requests now always clear the loading state, and the button displays a loading indicator while opening.
+
+Storage layout example:
+- Benchy.nc
+- Benchy.nc.olos-project.json
+
+Verification:
+- Frontend ESLint completed successfully.
+- Python compilation completed successfully for the modified backend API/model files.
+- A backend temporary-directory round-trip successfully saved and loaded a project sidecar.
+
+Prusa Connected Grid Infill - 2026-06-08
+=========================================
+
+Files changed:
+- OLOS_Interface/src/components/3DSlicingTabComponent/components/MainToolsBar/components/components/PrintingConfigurations/components/PrusaSettings.vue
+- OLOS_Interface/src/constants.ts
+- OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+- OLOS_Server/src/fastapi_server/models/slice_model.py
+- OLOS_Server/src/utils/threeD_slice.py
+- OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+- OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+Detailed changes:
+- Added a Prusa "Infill Type" selector with Lines and Grid options.
+- Lines remains the default and continues using the existing single-direction hatch generator.
+- Grid creates a primary hatch family at the configured infill angle and a
+  secondary hatch family at 90 degrees to it.
+- Secondary grid strokes have a 0.2 mm-wide no-burn corridor removed around
+  every primary hatch. The laser switches off before an existing hatch and
+  restarts after it, so perpendicular scans do not pass over or re-expose
+  previously drawn hatch lines.
+- Added "Grid Line Spacing" in millimetres. It controls the bundle pitch in
+  both grid directions and is independent from the Lines-mode hatch spacing.
+- Added "Custom Grid Crossing Clearance".
+  - With the toggle off, clearance is calculated as:
+    abs(Contour/Infill Overlap %) x 0.2 mm.
+  - Example: 15% produces 0.03 mm clearance and -25% produces 0.05 mm.
+  - The overlap sign continues to control the contour-to-infill relationship;
+    only its absolute magnitude is used for automatic grid clearance.
+  - With the toggle on, the user can enter an independent clearance in mm.
+- The existing fixed 0.2 mm spacing inside multi-line hatch bundles is
+  preserved in Grid mode.
+- Existing contour/infill overlap and boundary-clearance clipping are applied
+  before both grid directions are generated, keeping the grid inside the
+  permitted infill region.
+- Existing hatch rotation per layer, exposure zones, scan-order optimization,
+  infill power, and infill feedrate also apply to Grid mode.
+- Added defaults and backend fallbacks so older profiles without the new
+  fields continue loading as Lines infill with a 2 mm default grid spacing.
+
+Jobs Manager persistence correction:
+- Replaced structuredClone on reactive Pinia settings during project saving
+  with a plain JSON snapshot. This fixes jobs whose G-code saved successfully
+  but whose model/settings sidecar was missing.
+- Model and settings serialization now occurs before the G-code save request,
+  and non-HTTP serialization failures are no longer silently swallowed.
+
+Validation:
+- Frontend yarn lint passed.
+- Python compilation passed for the changed backend files.
+- Geometry tests confirmed that generated Grid segments remain inside the
+  clipped infill region.
+- Geometry tests confirmed secondary strokes have no powered intersection with
+  the primary hatch network.
+- Grid generation was tested with both one-line and three-line hatch bundles.
+
+
+PRUSA NON-DESTRUCTIVE PRINT-HEIGHT LIMIT
+========================================
+
+Purpose:
+- Added a way to print only the lower portion of a model without scaling or
+  deforming its Z geometry.
+- The source model remains complete. The selected height only controls the
+  preview clipping plane and the number of Prusa layers written to G-code.
+
+Files changed:
+- OLOS_Interface/src/components/3DSlicingTabComponent/components/PrintHeightControl.vue
+- OLOS_Interface/src/components/3DSlicingTabComponent/3DSlicingTabComponent.vue
+- OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+- OLOS_Interface/src/stores/3d-slicing.ts
+- OLOS_Interface/src/services/3d.slicer.service.ts
+- OLOS_Interface/src/components/3DSlicingTabComponent/components/ModelToolsBar.vue
+- OLOS_Server/src/fastapi_server/models/slice_model.py
+- OLOS_Server/src/fastapi_server/models/jobs_manager_model.py
+- OLOS_Server/src/utils/threeD_slice.py
+- OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+- OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+Detailed changes:
+- Added a Prusa-only "Limit print height" toggle in the 3D slicer.
+- Added a vertical drag slider and exact millimetre input. Moving the slider
+  upward increases the retained print height.
+- The control uses the current Prusa layer height as its step. Entered values
+  are snapped down to a complete layer so generated output does not exceed the
+  requested height.
+- Added a visible horizontal orange cutting-plane guide.
+- Enabled Three.js local clipping so model geometry above the selected height
+  is hidden in the slicer without modifying the mesh.
+- The maximum slider value automatically follows the highest model point and
+  refreshes after model loading or transformations.
+- Added printHeightLimit to the frontend slicing request and backend request
+  model.
+- The Prusa dispatcher passes the optional cutoff into the Prusa generator.
+- The Prusa generator truncates the sliced PNG layer list before contour,
+  infill, exposure-zone, machine-routine, progress, and estimated-time output
+  are generated. Therefore all downstream behavior uses the actual retained
+  layer count.
+- At least one complete layer is retained whenever the feature is enabled.
+- Saved slicer jobs retain the full transformed STL plus the selected height
+  limit. Opening the job restores both the complete model and its crop setting.
+- Normal model export remains uncropped, and downloaded print output remains
+  ordinary G-code containing only the selected lower layers.
+
+Validation:
+- Frontend yarn lint passed after adding the height control and state wiring.
+- The cutoff calculation uses floor(height / layerHeight), preventing an
+  additional layer above the selected height.
+
+Follow-up corrections:
+- Replaced the large Three.js PlaneHelper wireframe with a clean orange
+  bed-sized ring/outline at the selected height.
+- Completing a slider drag or confirming the millimetre input now starts a new
+  Prusa slice when an earlier slice result exists.
+- The regenerated G-code therefore refreshes the layer count, estimated print
+  time, and the next opened slice preview. Dragging remains visual-only until
+  release so it does not send repeated backend slicing requests.
+
+
+PRUSA ENGRAVING-MODE GANTRY COMPENSATION FIX
+=============================================
+
+Purpose:
+- Corrected the partially implemented engraving mode so it operates in the
+  Prusa workflow used for the OLSK metal printer.
+- Added laser-off acceleration and deceleration distance around every powered
+  contour and infill scan.
+
+Files changed:
+- OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+- OLOS_Interface/src/constants.ts
+- OLOS_Interface/src/components/3DSlicingTabComponent/components/MainToolsBar/components/components/PrintingConfigurations/components/PrusaSettings.vue
+- OLOS_Server/src/fastapi_server/models/slice_model.py
+- OLOS_Server/src/utils/threeD_slice.py
+- OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+- OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+Detailed changes:
+- Fixed the engraving-mode value being read from the wrong settings object.
+- Added engravingMode to the Prusa backend request model so Pydantic no longer
+  drops the selected mode.
+- Added an XY gantry acceleration setting in mm/s^2.
+- Added live first/intermediate/bulk compensation values for both contour and
+  infill. Each value uses that zone's existing feedrate:
+    velocity = feedrate / 60
+    distance = velocity^2 / (2 * acceleration)
+- Engraving mode forces one contour path and one scan path per hatch rather
+  than expanding the path into contour/hatch line bundles.
+- Every straight engraving scan now follows this sequence:
+    1. G0 to the calculated lead-in point with S0.
+    2. G1 to the intended scan start with S0 and the zone feedrate.
+    3. G1 across the intended geometry with the selected power/feedrate.
+    4. G1 to the calculated lead-out point with S0 and the same feedrate.
+- Contours receive the same lead-in and lead-out treatment using contour speed.
+- Lead points are clamped to the configured 96 x 96 mm machine bed to avoid
+  compensation travel beyond the print-coordinate boundary.
+- Engraving G-code includes comments recording the calculated contour/infill
+  lead distance and acceleration for each layer.
+- Updated the VisiCut-style slice preview splitter to recognize the engraving
+  contour marker. Laser-off lead moves are converted to travel and excluded
+  from the red/blue exposure geometry, while powered contour and infill remain
+  correctly separated.
+- Vectoring mode retains its existing line-count and hatch-bundle behavior.
+- The former infill thickness field is presented as nominal track width. It is
+  used for spacing, boundary treatment, and grid crossing exclusion; actual
+  melt-track width remains dependent on optics and process parameters.
+
+Validation:
+- At F6000 and 500 mm/s^2, the generated lead distance was verified as 10 mm.
+- Geometry-level output verified S0 acceleration, powered scan, and S0
+  deceleration commands in the expected order.
+- Frontend production build passed.
+- Frontend lint passed with only three pre-existing no-explicit-any warnings
+  in the separate G-code Generator component.
+- Backend Python compilation passed.
+================================================================================
+PRUSA ENGRAVING SAFETY, UNIT, BED, AND ROUTINE AUDIT
+Date: June 11, 2026
+================================================================================
+
+PURPOSE
+-------
+Completed an end-to-end audit of Prusa engraving-mode G-code generation for
+the OLSK metal printer. The audit covered feedrate units, acceleration and
+deceleration compensation, exposure zones, the 96 mm circular bed, laser
+state around the recoating routine, preview classification, and inactive
+settings that did not affect this Prusa workflow.
+
+FILES CHANGED
+-------------
+1. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Kept the compensation equation:
+       velocity_mm_s = feedrate_mm_min / 60
+       lead_distance_mm = velocity_mm_s^2 / (2 * acceleration_mm_s2)
+   - Added strict validation that engraving mode is either "vectoring" or
+     "engraving".
+   - Added strict validation that acceleration and engraving feedrates are
+     finite and greater than zero. Invalid values now stop slicing instead of
+     creating an extremely large or meaningless compensation distance.
+   - Added G-code header comments documenting the feedrate conversion and
+     compensation equation.
+   - Added per-zone G-code comments containing the original feedrate in
+     mm/min, converted velocity in mm/s, calculated lead distance in mm, and
+     configured acceleration in mm/s^2.
+   - Added circular-bed validation for the 96 mm diameter platform. A sliced
+     region extending outside the circle now stops with an error.
+   - Lead-in and lead-out coordinates are validated against the circular bed.
+     A later safety follow-up changed out-of-bed handling from silent
+     projection to a clear slice error.
+   - Engraving still forces one contour centerline and one line per hatch.
+     Vector-mode line-count behavior remains unchanged.
+
+2. OLOS_Server/src/utils/threeD_printing_slice/src/slicers_shared_methods.py
+
+   - Added an explicit M5 at the beginning of every recoating routine.
+   - The established routine order remains:
+       laser off;
+       reset A and Z;
+       park XY;
+       move reservoir A and bed Z;
+       move recoater B out;
+       move recoater B home;
+       return XY to the configured bed offset;
+       reset local XY;
+       start the next layer with M3.
+   - No-Routine First Layers continues to suppress the entire routine for the
+     requested initial layer count.
+
+3. OLOS_Server/src/fastapi_server/models/slice_model.py
+
+   - Restricted engravingMode to "vectoring" or "engraving".
+   - Required engravingAcceleration to be greater than zero.
+
+4. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Expanded the compensation table to show feedrate in mm/min, converted
+     velocity in mm/s, and contour/infill lead distances for first,
+     intermediate, and bulk zones.
+   - Added a visible reminder that feedrate is divided by 60 before applying
+     the compensation equation.
+   - Removed inactive Hollowing, Support, and Pad sections from the visible
+     Prusa settings panel. The current Prusa mask workflow disables those
+     features in the backend, so showing the controls was misleading.
+
+5. OLOS_Interface/src/workers/slice.previewer.worker.ts
+
+   - Updated engraving contour-marker recognition for the expanded G-code
+     comments, preserving red infill and blue contour classification.
+
+VALIDATION
+----------
+- Verified F6000 mm/min converts to 100 mm/s.
+- Verified F6000 at 500 mm/s^2 produces a 10 mm lead distance.
+- Generated a complete 24-layer Prusa Benchy engraving slice.
+- Verified first-zone F2000 produces 33.3333 mm/s and 1.1111 mm lead.
+- Verified intermediate-zone F3000 produces 50 mm/s and 2.5 mm lead.
+- Verified bulk-zone F6000 produces 100 mm/s and 10 mm lead.
+- Verified 21 recoating routines were produced after skipping the first
+  3 layers.
+- Verified every generated routine begins with M5.
+- Verified recoater B-out precedes B-home, which precedes XY return and the
+  next M3.
+- Verified all generated engraving scan and compensation coordinates remain
+  inside the 96 mm circular platform.
+
+IMPORTANT MACHINE NOTE
+----------------------
+The configured acceleration must match the real controller/gantry
+acceleration. The equation is mathematically correct, but an incorrect
+acceleration value produces an incorrect physical lead distance. Always run a
+no-power motion test before a powered print.
+
+
+JUNE 11, 2026 - ENGRAVING COMPENSATION SAFETY FOLLOW-UP
+========================================================
+
+1. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Reconfirmed that controller feedrates are supplied in mm/min and are
+     converted before the kinematic calculation:
+       velocity_mm_s = feedrate_mm_min / 60
+       lead_distance_mm = velocity_mm_s^2 / (2 * acceleration_mm_s2)
+   - Removed silent circular-bed clamping of engraving lead points. Clamping
+     could shorten a requested lead without changing the displayed value.
+   - Engraving now rejects the slice when the complete calculated lead-in or
+     lead-out does not fit inside the configured 96 mm circular scan area.
+     The error reports feedrate, acceleration, and required lead distance.
+   - Kept vectoring behavior unchanged.
+
+2. OLOS_Server/src/utils/threeD_printing_slice/src/
+   slicers_shared_methods.py
+
+   - Prevented the legacy raster boundary-clamping and automatic first-move
+     repair passes from modifying already compensated engraving paths.
+   - Added explicit ";ROUTINE BEGIN" and ";ROUTINE END" comments around each
+     recoating block so generated files can be audited without changing
+     controller motion.
+   - Retained the parser-safe spaced A-axis command form:
+       G1 A-0.2 F50
+
+3. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Changed misleading "single thick line" wording to "single centerline
+     scan". The physical melt-track width is a process result, not a width
+     directly commanded by G-code.
+   - Reworked the compensation table into separate first/intermediate/bulk
+     contour and infill rows. Each row now shows F in mm/min, converted
+     velocity in mm/s, and calculated lead in mm.
+   - Vector-only line-count controls remain hidden in engraving mode.
+   - Hollowing, support, and pad controls remain hidden because this Prusa
+     mask workflow explicitly disables those unsupported outputs.
+
+VALIDATION
+----------
+- Generated a real four-layer Prusa box engraving slice using the packaged
+  PrusaSlicer executable.
+- Verified F2000 -> 33.3333 mm/s -> 1.1111 mm lead at 500 mm/s^2.
+- Verified F3000 -> 50.0000 mm/s -> 2.5000 mm lead at 500 mm/s^2.
+- Verified F6000 -> 100.0000 mm/s -> 10.0000 mm lead at 500 mm/s^2.
+- With No-Routine First Layers = 2, verified exactly two routines for four
+  layers.
+- Verified each routine order: M5, XY park, A/Z movement, B out, B home,
+  XY return, coordinate reset, then the next M3.
+- Verified all 192 generated powered and compensation scan coordinates were
+  inside the 96 mm circular scan area.
+- Verified out-of-bed compensation is rejected instead of shortened.
+
+
+JUNE 12, 2026 - MACHINE COORDINATE AND JOB-START SAFETY FIX
+============================================================
+
+Problem confirmed
+-----------------
+- A Prusa engraving job moved toward the machine limit after initially
+  parking at the bed center.
+- Prusa scan paths use a 0..96 mm coordinate frame whose bed center is
+  (48, 48), but the generated G-code assigned the physical bed center to
+  work coordinate (0, 0).
+- The affected engtest01S28.nc file therefore interpreted its first scan
+  point, X46.2066 Y57.9203, as 74.093 mm from the physical bed center. This
+  exceeds the 48 mm radius of the 96 mm circular bed.
+- Per-layer G92 X0 Y0 commands also repeated the mismatch, so correcting only
+  the initial header would not have fixed subsequent layers.
+
+Files changed
+-------------
+1. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Prusa now explicitly configures its work origin as half the bed width
+     and height. For the current 96 mm bed this is X48 Y48.
+   - Generated-file validation now requires the expected Prusa bed-center
+     coordinate assignment.
+
+2. OLOS_Server/src/utils/threeD_printing_slice/src/
+   slicers_shared_methods.py
+
+   - Initial positioning now waits for the physical-center G53 move to finish
+     before applying G92.
+   - Prusa initialization and recoating returns assign the physical bed center
+     to X48 Y48 rather than X0 Y0.
+   - Per-layer coordinate resets and end-of-layer return moves use the same
+     configured work center, preventing the header fix from being overwritten.
+   - Other slicers retain the legacy X0 Y0 behavior unless they explicitly
+     provide a different work origin.
+
+3. OLOS_Server/src/utils/job_manager_helper.py
+
+   - Added a pre-execution circular-bed safety check for generated Prusa jobs.
+   - The check interprets each G92 coordinate assignment at the physical bed
+     center and rejects any G0/G1 work move farther than 48 mm from it.
+   - This blocks older mixed-coordinate files before a command reaches the
+     controller.
+
+4. OLOS_Server/src/core/server_core.py
+
+   - Job-streaming flags are now enabled only after start-time validation
+     succeeds. A rejected job can no longer remain displayed as running.
+
+5. OLOS_Interface/src/components/MainControlsComponent/components/
+   JobControls.vue
+
+   - Stop remains available as soon as a file is marked executing, even while
+     the controller still reports Idle or has stale state.
+   - A failed start resets the frontend execution flag.
+
+6. OLOS_Interface/public/config.yaml
+
+   - Corrected the displayed 3D-printer work area from 100 x 100 mm to the
+     actual 96 x 96 mm circular-bed coordinate range.
+
+Validation
+----------
+- Python compilation passed for every modified backend module.
+- Frontend lint completed with zero errors.
+- The production frontend build completed successfully.
+- A generated test layer uses G92 X48 Y48 and returns to X48 Y48.
+- A valid synthetic path inside the 96 mm bed passed preflight.
+- A synthetic corner move was rejected at 67.882 mm from bed center.
+- The old engtest01S28.nc file was correctly rejected at line 21, 74.093 mm
+  from bed center.
+- No OLOS backend or machine connection was started during validation.
+
+
+JUNE 12, 2026 - JOB STREAM STALL AND PLAY/PAUSE RECOVERY
+========================================================
+
+Problem confirmed
+-----------------
+- A valid, bed-safe engraving file moved to its starting area but then stopped
+  advancing while OLOS continued to display the machine as RUN.
+- GRBL real-time commands such as status query (?), pause (!), resume (~), and
+  reset (Ctrl+X) do not return the normal "ok" G-code acknowledgement.
+- OLOS was incrementing its pending-acknowledgement counter for status
+  requests. The returned <Run...> status did not decrement that counter, so
+  the next job line could remain blocked indefinitely.
+- The square and exclamation-mark characters seen in the console were the raw
+  Ctrl+X Stop and ! Pause bytes, not corrupted G-code.
+- The job timer could become a very large negative value after Stop because
+  stopping did not record a final timestamp.
+
+Files changed
+-------------
+1. OLOS_Server/src/machine_connection/machine_connector.py
+
+   - Real-time commands and machine-status requests no longer increment the
+     G-code "waiting for ok" counter.
+   - Normal G-code and commands such as $X continue to wait for their expected
+     acknowledgement.
+
+2. OLOS_Server/src/core/server_core.py
+
+   - Blank lines and semicolon comments are no longer transmitted to the
+     controller or counted as planner commands.
+   - They remain visible as job-progress/console updates.
+   - Added a shared progress-update helper so executable and comment lines use
+     consistent line indices and timer data.
+
+3. OLOS_Server/src/utils/job_execution_timer.py
+
+   - Stop now records the current time before marking the timer inactive,
+     preventing negative elapsed-time displays.
+
+4. OLOS_Interface/src/components/MainControlsComponent/components/
+   JobControls.vue
+
+   - A paused/Hold job now shows a clear Play icon for Resume.
+   - RUN shows Pause only while a file is actually marked as executing.
+   - Button state now also reacts to changes in the execution flag.
+
+5. OLOS_Interface/src/stores/websocket-connection.ts
+
+   - The frontend clears the file-executing state when streamed line progress
+     reaches the final line.
+
+Safety note
+-----------
+- Stop remains a true GRBL soft reset. After Stop, GRBL may enter Alarm and
+  must be deliberately unlocked before Play can safely become available.
+- OLOS does not automatically unlock after an emergency Stop.
+
+Validation
+----------
+- Backend Python compilation passed.
+- Frontend lint passed with zero errors.
+- Status and real-time commands were verified not to change the pending-ok
+  counter.
+- A normal acknowledged command was verified to increment the counter.
+- Stopped job timers were verified to remain non-negative.
+- The saved engraaaved.nc passed the 96 mm circular-bed preflight.
+- No OLOS server or machine connection was started.
+
+
+JUNE 15, 2026 - ACKNOWLEDGED LIVE G-CODE PREVIEW AND STREAM SAFETY
+=================================================================
+
+Problems confirmed
+------------------
+- Job progress and preview highlighting advanced as soon as a command entered
+  the serial queue, before GRBL returned "ok".
+- Comments, blank lines, M-codes, feed-only commands, G92/G53 positioning, and
+  auxiliary-axis moves incorrectly advanced the rendered toolpath highlight.
+- The preview highlighter assumed each 1,000-line source batch contained 1,000
+  drawable moves. Comments and machine routines made that assumption false,
+  causing the execution color to drift at batch boundaries.
+- After a GRBL parser error, Resume could make the interface appear ready to
+  continue even though the rejected command had not succeeded.
+- 3D-printer jobs retained old progress when restarted, and serial disconnects
+  could leave the interface showing a file as executing.
+- Per-move browser console logging slowed previews of large G-code files.
+- A stale orphaned OLOS backend process tree was still alive alongside the
+  current server and could compete for COM10 even though only one API appeared
+  active.
+
+Files changed
+-------------
+1. OLOS_Server/src/core/server_core.py
+
+   - Tracks one pending streamed command and reports it as "sent" while waiting.
+   - Reports a command as "acknowledged" only after the pending GRBL
+     acknowledgement counter returns to zero.
+   - Reports comments and blank lines as "skipped" without sending them.
+   - Clears pending execution state on job start, Stop, completion, and serial
+     disconnect.
+
+2. OLOS_Server/src/machine_connection/machine_connector.py
+
+   - Added a persistent command-error lock when GRBL rejects a streamed line.
+   - A rejected job cannot silently resume and advance to the next line.
+   - Stop/reset clears the command-error lock.
+
+3. OLOS_Server/src/utils/shared_data.py
+
+   - Added the process-safe has_command_error flag shared by the core and serial
+     connector.
+
+4. OLOS_Server/src/utils/websocket_json_data.py
+
+   - Job execution messages now include sent, acknowledged, or skipped state.
+
+5. OLOS_Interface/src/stores/job-info.ts
+
+   - Tracks current command, source line, total lines, execution state, and
+     controller rejection state.
+   - Progress is clamped safely and resets for every machine type.
+
+6. OLOS_Interface/src/stores/websocket-connection.ts
+
+   - Progress, timer, console history, and rendered completion advance only for
+     acknowledged/skipped lines, never merely queued lines.
+   - GRBL errors mark the live job as rejected.
+   - Serial disconnects clear the executing state.
+
+7. OLOS_Interface/src/stores/gcode-preview.ts
+
+   - Only actual drawable XYZ motion commands advance execution highlighting.
+   - Comments, power commands, feed-only commands, G53/G92, and A/B-only moves
+     no longer desynchronize the preview.
+
+8. OLOS_Interface/src/services/gcode.previewer.service/
+   gcode.previewer.helper.service.ts
+
+   - Execution highlighting now changes batches using actual geometry lengths.
+   - Removed expensive per-motion console logging.
+
+9. OLOS_Interface/src/components/JobPreviewTabComponent/components/
+   GraphComponent.vue
+
+   - Added a UGS-style live status panel showing current source line, command,
+     and whether it is awaiting, acknowledged, skipped, stopped, or rejected.
+
+10. OLOS_Interface/src/components/MainControlsComponent/components/
+    JobControls.vue
+
+    - Parser-rejected jobs disable Resume until Stop/reset.
+    - Every new 3D-printer job clears old progress and execution highlighting.
+
+Validation
+----------
+- Backend Python compilation passed.
+- An isolated streamer test verified sent -> acknowledged ordering and confirmed
+  comments remain skipped.
+- Frontend lint passed with zero errors (three unrelated existing warnings).
+- Production frontend build completed successfully.
+- The frontend development server is available at
+  http://localhost:9000/index.html#/preview.
+- Stale OLOS backend processes were stopped and one clean backend instance was
+  started; API port 8000 and WebSocket port 8887 each have one listener.
+- No motion or machine command was sent during validation.
+
+
+JUNE 15, 2026 - UGS-EQUIVALENT STARTUP AND COORDINATE AUDIT
+============================================================
+
+Problems confirmed
+------------------
+- The WebSocket command-handler thread crashed on status/control commands
+  because a list of real-time commands was passed as a queue data type.
+- The test backend had drifted from the original machine configuration and was
+  using COM9 instead of the established COM10 controller port.
+- The circular-bed preflight treated G92 X0 Y0 as the physical bed center,
+  although the proven routine uses it at the lower-left 0..96 mm bed reference.
+- Generated Prusa files relied on the controller's previous G90/G21/G94 modal
+  state instead of declaring absolute millimetres and feed-per-minute.
+
+Files changed
+-------------
+1. OLOS_Server/src/core/server_core.py
+
+   - Real-time status, Pause, Resume, and Stop commands now use the correct
+     REAL_TIME_COMMAND data type.
+   - Direct serial commands now identify individual real-time characters using
+     membership in the real-time command list.
+   - Pico status commands use the normal command data type.
+
+2. OLOS_Server/config.yaml
+
+   - Restored the original machine controller port, COM10.
+
+3. OLOS_Server/src/utils/job_manager_helper.py
+
+   - Corrected the physical coordinate conversion for the proven G53 bed
+     reference plus G92 X0 Y0 convention.
+   - All work-coordinate XY travel is checked against the physical 0..96 mm
+     machine envelope.
+   - Laser-on moves receive the stricter 48 mm circular build-bed check.
+
+4. OLOS_Server/src/utils/threeD_printing_slice/src/
+   slicers_shared_methods.py
+
+   - Generated files now explicitly start with G90, G21, and G94 before motion.
+
+5. C:/Users/Dharunjaz/Downloads/engtestS0.nc
+
+   - Added G90/G21/G94 to the current S0 dry-run file.
+
+Audit result for engtestS0.nc
+-----------------------------
+- 84,733 source lines after adding modal setup.
+- No malformed or unparsed G-code words.
+- Laser power is S0 throughout.
+- 36 layers and 35 complete recoating routines.
+- Work path remains inside the physical 0..96 mm envelope.
+- Machine-coordinate routine values match the established sequence:
+  bed reference X-238.5/Y-158, parking X-395.5/Y-4.5, and recoater
+  B-405/B-4.5.
+- OLOS does not prepend camera/job-positioning motion when a 3D-printer job
+  starts; it streams the opened file itself one command at a time.
+- At final verification Windows exposed no active serial ports and the backend
+  reported COM10 as not found. The job must not be started until the controller
+  is powered, COM10 is present, UGS is closed, and OLOS reports connected.
+
+
+JUNE 15, 2026 - HYBRID PER-ZONE ENGRAVING AND VECTORING
+=======================================================
+
+Purpose
+-------
+- Added independent scan-mode selection for the first adhesion layers and the
+  intermediate transition layers.
+- This supports the requested Benchy workflow: engrave the adhesion and
+  transition zones, then vector the remaining model layers.
+- Machine routine commands, bed offsets, layer heights, reservoir motion,
+  exposure values, and feedrates were not changed by this feature.
+
+User interface changes
+----------------------
+1. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Renamed the global mode selector to "Remaining Layers Mode" so its scope
+     is clear after the two per-zone overrides.
+   - Added "Engrave First Layers" to the adhesion-zone settings.
+   - Added "Engrave Intermediate Layers" inside the enabled intermediate zone.
+   - Each disabled toggle uses the existing vector contour/hatch process.
+   - Each enabled toggle uses compensated horizontal engraving scanlines.
+   - Zone labels now change between scanline power/feedrate and
+     infill/contour terminology according to the selected zone mode.
+   - Contour power and speed remain visible only for zones that are vectored,
+     because engraving executes the material as rastered scanline segments.
+   - Engraving acceleration, scanline spacing, track width, grid controls, and
+     calculated lead distances remain available whenever any zone engraves.
+   - The lead-distance table now displays only the zones actually configured
+     for engraving.
+
+Settings and API changes
+------------------------
+2. OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+
+   - Added firstZoneEngravingEnabled and
+     intermediateZoneEngravingEnabled to the shared zone settings interface.
+
+3. OLOS_Interface/src/constants.ts
+
+   - Added false defaults for both zone engraving toggles, preserving the
+     previous all-vector behavior for existing/default Prusa profiles.
+
+4. OLOS_Server/src/fastapi_server/models/slice_model.py
+
+   - Added optional API fields for both new toggles so saved profiles and slice
+     requests can carry the selected zone modes.
+
+5. OLOS_Server/src/utils/threeD_slice.py
+6. OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+
+   - Mapped the frontend camelCase fields to the slicer's internal snake_case
+     settings in both active dispatcher implementations.
+
+Layer generation changes
+------------------------
+7. OLOS_Server/src/utils/threeD_printing_slice/src/
+   slicers_shared_methods.py
+
+   - Added get_zone_scan_mode(), which resolves each layer as follows:
+     first-zone toggle, intermediate-zone toggle, then Remaining Layers Mode.
+   - A disabled zone toggle explicitly selects vectoring for that zone.
+   - Layers outside the configured zones use the existing global/base mode.
+
+8. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Replaced the single job-wide engraving decision with a per-layer mode.
+   - Engraved layers use the existing combined horizontal raster generator,
+     zone-specific power/feedrate, and acceleration-based lead compensation.
+   - Vectored layers use the existing contour and infill vector generators.
+   - Added a hybrid-mode header describing the first, intermediate, and
+     remaining-layer modes.
+   - Added a ";LAYER N SCAN MODE: ..." comment before every layer so the
+     transition can be audited in downloaded G-code before machine execution.
+
+Validation
+----------
+- Python compilation passed for all changed backend modules.
+- Resolver test for three first layers plus two intermediate layers returned:
+  ENGRAVING for layers 1-5 and VECTORING for all remaining layers.
+- A second resolver test confirmed that disabling the intermediate toggle
+  vectors only that zone while retaining engraved first layers.
+- The Quasar production frontend build completed successfully.
+- No backend/server process was started and no machine command was sent.
+
+
+JUNE 15, 2026 - ENGRAVED CONTOUR SHELL WITH GRID-FILLED CORE
+============================================================
+
+Purpose
+-------
+- Reduced energy concentration on engraved adhesion and transition layers.
+- Engraving no longer rasters the complete solid cross-section.
+- Only a configurable perimeter shell is rastered densely; the remaining
+  interior is left empty or filled with the configured grid.
+- The grid is now available for ordinary contour interiors as well as polygon
+  holes, so solid Benchy base sections can use a shell-and-grid structure.
+
+Files changed
+-------------
+1. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Added "Engraved Contour Shell Width".
+   - Renamed the engraving fill control to
+     "Grid-Fill Engraved Contour Interior".
+   - Updated help text to describe the shell/core behavior.
+   - The existing grid spacing, angle, line thickness, crossing clearance, and
+     contour/infill overlap settings now configure the interior core grid.
+
+2. OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+3. OLOS_Interface/src/constants.ts
+4. OLOS_Server/src/fastapi_server/models/slice_model.py
+5. OLOS_Server/src/utils/threeD_slice.py
+6. OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+
+   - Added engravingContourThickness / engraving_contour_thickness throughout
+     frontend state, profile defaults, API validation, and backend mapping.
+   - Default shell width is 0.8 mm.
+
+7. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Added a geometric shell/core split based on an inward polygon buffer.
+   - The method works on outer and inner boundaries, including solid regions,
+     rings, thin sections, and disconnected geometry.
+   - The raster generator now scans only the contour shell.
+   - When interior grid fill is enabled, grid bands are clipped to the inset
+     core instead of only being generated inside enclosed polygon holes.
+   - Positive contour/infill overlap expands the grid core into the shell.
+   - Negative overlap shrinks the core and creates a real unpowered gap.
+   - Thin regions that cannot contain an inset core remain fully rastered so
+     small features are not silently discarded.
+   - G-code headers now report CONTOUR SHELL RASTER, shell width, and whether
+     the interior core is grid-filled or empty.
+
+8. OLOS_Server/src/utils/threeD_printing_slice/src/
+   slicers_shared_methods.py
+
+   - Registered the new contour-shell marker as pre-compensated engraving so
+     legacy cleanup cannot clamp it or add a second lead-in sequence.
+
+9. OLOS_Interface/src/workers/slice.previewer.worker.ts
+
+   - Updated preview terminology from enclosed-hole grid to contour-core grid.
+
+Validation
+----------
+- Backend Python compilation passed.
+- A 20 x 10 mm geometry with a 1 mm shell split into 56 mm^2 shell and
+  144 mm^2 core, exactly preserving the original 200 mm^2 area.
+- Grid geometry had zero intersection with the shell at 0% overlap.
+- Negative overlap reduced the grid area and retained zero shell overlap.
+- Positive overlap expanded the grid into the shell by the requested amount.
+- The Quasar production frontend build completed successfully.
+- No server process was started and no machine command was sent.
+
+
+JUNE 15, 2026 - VECTOR/ENGRAVED WALL THICKNESS MATCHING
+=======================================================
+
+Purpose
+-------
+- Added a calibrated way to keep rastered contour shells and vector contour
+  bundles at the same nominal wall thickness when changing scan mode between
+  layer zones.
+- Preserved the proven 0.2 mm vector contour center-to-center spacing.
+
+Calculation
+-----------
+- Calculated vector wall width:
+
+    (Contour Line Count - 1) x 0.2 mm + Nominal Vector Track Width
+
+- Example: four vector contour lines, 0.2 mm apart, with a measured 0.2 mm
+  laser track produce a calculated wall width of 0.8 mm.
+- Nominal Vector Track Width is a calibration value. It should be measured
+  from a representative coupon using the intended material, focus, power,
+  feedrate, and layer settings.
+
+Files changed
+-------------
+1. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Added Nominal/Measured Vector Track Width.
+   - Added a live Calculated Vector Wall Width display.
+   - Added Match Engraved Shell to Vector Wall.
+   - Disabled manual engraved shell-width inputs while automatic matching is
+     enabled and displayed the effective matched width in the global, first
+     layer, and intermediate layer engraving menus.
+
+2. OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+3. OLOS_Interface/src/constants.ts
+
+   - Added saved/profile settings for nominalVectorTrackWidth and
+     matchEngravedShellToVectorWall.
+   - Default track width is 0.2 mm.
+   - Automatic matching defaults to OFF to avoid silently changing existing
+     jobs.
+
+4. OLOS_Server/src/fastapi_server/models/slice_model.py
+5. OLOS_Server/src/utils/threeD_slice.py
+6. OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+
+   - Added API validation and mapping for both calibration settings.
+
+7. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Added the vector wall-width calculation.
+   - When matching is enabled, the calculated width overrides the manual
+     engraved contour-shell width for every engraved layer zone.
+   - Added G-code header records for vector track width, calculated vector
+     wall width, and whether matching was enabled.
+
+Validation
+----------
+- Verified that 4 tracks at 0.2 mm spacing with a 0.2 mm track width calculate
+  to 0.8 mm.
+- Verified that 3 tracks at 0.2 mm spacing with a 0.15 mm track width
+  calculate to 0.55 mm.
+- Python compilation passed.
+- The Quasar production frontend build completed successfully.
+- No backend/server process was started and no machine command was sent.
+
+
+JUNE 15, 2026 - ZONE-LOCAL ENGRAVING INFILL MENUS
+=================================================
+
+Purpose
+-------
+- Made hybrid first/intermediate engraving settings easier to understand by
+  displaying the relevant infill controls inside each engraved zone.
+- Kept one shared grid profile so crossing clearance and grid geometry cannot
+  accidentally differ between first, intermediate, and remaining layers.
+
+File changed
+------------
+1. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Added an "Engraving Infill" expansion menu when First Layer engraving is
+     enabled.
+   - Added the same menu when Intermediate Layer engraving is enabled.
+   - Each menu exposes grid fill, raster direction, contour shell width,
+     scanline spacing, grid spacing, grid thickness, grid angle, and crossing
+     clearance.
+   - Both menus bind directly to the existing shared Prusa settings.
+   - Custom Grid Crossing Clearance uses the same gridClearance value used by
+     remaining layers.
+   - Automatic crossing clearance continues to follow scanline spacing.
+   - No first- or intermediate-specific clearance fields were introduced.
+
+Validation
+----------
+- Confirmed the API and generator contain one gridClearance/grid_clearance
+  setting only.
+- The Quasar production frontend build completed successfully.
+- No server process was started and no machine command was sent.
+
+
+JUNE 15, 2026 - SELECTABLE ENGRAVING RASTER DIRECTION
+=====================================================
+
+Purpose
+-------
+- Added a choice between X-direction horizontal raster rows and Y-direction
+  vertical raster columns for all engraved layer zones.
+
+Files changed
+-------------
+1. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Added an X Direction / Y Direction segmented control.
+   - Updated the engraving explanation to describe the selected axis.
+
+2. OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+3. OLOS_Interface/src/constants.ts
+4. OLOS_Server/src/fastapi_server/models/slice_model.py
+5. OLOS_Server/src/utils/threeD_slice.py
+6. OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+
+   - Added engravingRasterDirection / engraving_raster_direction throughout
+     defaults, profile state, API validation, and backend mapping.
+   - X remains the default to preserve existing job behavior.
+
+7. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Added vertical scanline clipping and ordering.
+   - X mode scans horizontal rows and spaces them along Y.
+   - Y mode scans vertical columns and spaces them along X.
+   - Both modes retain alternating direction, shell/core clipping, grid dashes,
+     laser-off gaps, and acceleration-based lead-in/out compensation.
+   - G-code headers record the chosen raster direction.
+   - Scan comments identify ENGRAVING ROW or ENGRAVING COLUMN.
+
+Validation
+----------
+- Python compilation passed.
+- X test output produced horizontal row scans.
+- Y test output produced vertical column scans.
+- Both generated powered compensated segments successfully.
+- The Quasar production frontend build completed successfully.
+- No server process was started and no machine command was sent.

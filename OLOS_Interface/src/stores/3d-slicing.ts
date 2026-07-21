@@ -6,6 +6,7 @@ import {
   PyslmSettings,
   Slic3rSettings,
   SlicingData,
+  SlicerJobProject,
   SlicingSettings,
 } from 'src/interfaces/3D.slicing.interface';
 import { ThreeDSlicer } from 'src/services/3d.slicer.service';
@@ -66,6 +67,9 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
     /** Toggles the visibility of the grid in the 3D scene. */
     isGridHelperVisible: true as boolean,
 
+    /** Toggles the visibility of the machine coordinate scale in the 3D scene. */
+    isCoordinateScaleHelperVisible: false as boolean,
+
     /** Toggles the visibility of the uploaded models list. */
     isModelsListVisible: true as boolean,
 
@@ -80,6 +84,18 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
 
     /** Determines if the resizing operation should be uniform across all axes. */
     isResizeUniformed: true as boolean,
+
+    /** Enables non-destructive truncation of the build above a selected height. */
+    isPrintHeightLimited: false as boolean,
+
+    /** Maximum model height currently present in the scene. */
+    maximumPrintHeight: 0 as number,
+
+    /** Height above the bed up to which layers will be generated. */
+    printHeightLimit: 0 as number,
+
+    /** Height above the bed below which layers will be skipped. */
+    printHeightLowerLimit: 0 as number,
 
     /** Data of the currently selected 3D model in the scene. */
     selectedModel: {
@@ -97,6 +113,9 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
 
     /** Flag indicating if a new slicing result is available for preview. */
     isNewSlicingProcess: false as boolean,
+
+    /** Project waiting to be restored after the slicer scene is mounted. */
+    pendingJobProject: null as SlicerJobProject | null,
 
     /** Fingerprint of the G-code currently drawn in the slice preview. */
     previewedSlicingResultKey: '' as string,
@@ -234,6 +253,9 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
         this.threeDSlicerInstance = new ThreeDSlicer(config);
       }
       this.threeDSlicerInstance.drawSlicingContainer(this.slicingGraph);
+      if (this.pendingJobProject) {
+        await this.restorePendingJobProject();
+      }
     },
     /**
      *  Exports all models in the scene, sends them to the backend API for slicing, and handles the response.
@@ -250,9 +272,17 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
             const slicingData = {
               modelFile: await this.threeDSlicerInstance.blobToBase64(blob),
               modelSize: this.threeDSlicerInstance.getModelsGroupSize(),
+              printHeightLimit: this.isPrintHeightLimited
+                ? this.printHeightLimit
+                : undefined,
+              printHeightLowerLimit: this.isPrintHeightLimited
+                ? this.printHeightLowerLimit
+                : undefined,
               slicingSettings: {
                 profileName: this.slicingProfileName,
                 slicingLib: this.selectedSlicerLib,
+                engravingMode: this.prusaSettings.engravingMode,
+                recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
                 slic3rSettings: this.slic3rSettings,
                 prusaSettings: this.prusaSettings,
                 pyslmSettings: this.pyslmSettings,
@@ -345,15 +375,67 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       }
     },
     /**
+     * Uploads an existing G-code file from the PC, opens it as the active job,
+     * and prepares it for the slicer preview dialog.
+     * @param file - Local .nc/.gcode/.cnc file.
+     */
+    async importGcodeFileToSlicer(file: File) {
+      await this.jobManagerStore.uploadJobFile(file);
+      this.jobManagerStore.selectFile(file.name);
+      await this.jobManagerStore.openFile();
+
+      this.slicingResult = this.jobManagerStore.fileData.fileContent;
+      this.estimatedPrintTimeSeconds = null;
+      this.previewedSlicingResultKey = '';
+      this.isNewSlicingProcess = true;
+    },
+    /**
      *  Requests the backend to save the sliced G-code file to the local system storage.
      * @param {string} filename - The desired name for the saved file.
      * @returns {Promise<void>}
      */
     async saveSlicingResultLocally(filename: string) {
       try {
+        if (!this.threeDSlicerInstance) {
+          throw new Error('The 3D slicer is not initialized.');
+        }
+
+        const modelBlob = this.threeDSlicerInstance.exportSceneModels(
+          Constants.SLICING_FILES_FORMATE.STL
+        );
+        if (!modelBlob) {
+          throw new Error('The slicer model could not be saved.');
+        }
+
+        // Pinia state is reactive and cannot be passed to structuredClone.
+        // JSON serialization creates the plain-data snapshot required here.
+          const project: SlicerJobProject = {
+            version: 1,
+            modelFile: await this.threeDSlicerInstance.blobToBase64(modelBlob),
+            printHeightLimit: this.isPrintHeightLimited
+              ? this.printHeightLimit
+              : undefined,
+            printHeightLowerLimit: this.isPrintHeightLimited
+              ? this.printHeightLowerLimit
+              : undefined,
+            slicingSettings: JSON.parse(
+            JSON.stringify({
+              profileName: this.slicingProfileName,
+              slicingLib: this.selectedSlicerLib,
+              engravingMode: this.prusaSettings.engravingMode,
+              recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
+              slic3rSettings: this.slic3rSettings,
+              prusaSettings: this.prusaSettings,
+              pyslmSettings: this.pyslmSettings,
+            })
+          ),
+        };
+
         const res = (await API.saveSlicingFile(filename)).data;
 
         if (res.data.success) {
+          await API.saveJobProject(filename, project);
+
           this.debuggerStore.addLog(
             new Date(),
             res.type,
@@ -365,6 +447,12 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
 
           // update the list incase there is any changes from the system side
           this.jobManagerStore.filesListData = res.data.filesListData;
+
+          // A saved slice must also be opened by the jobs manager before the
+          // machine controls can execute it. Keep the newly generated G-code
+          // as the active job so Play is immediately available.
+          this.jobManagerStore.selectFile(filename);
+          await this.jobManagerStore.openFile();
         }
       } catch (error: AxiosError | unknown) {
         if (axios.isAxiosError(error)) {
@@ -379,6 +467,7 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
               error.response?.data.detail
           );
         }
+        throw error;
       }
     },
     /**
@@ -412,6 +501,8 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       const slicingSettings = {
         profileName: name,
         slicingLib: this.selectedSlicerLib,
+        engravingMode: this.prusaSettings.engravingMode,
+        recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
         slic3rSettings: this.slic3rSettings,
         prusaSettings: this.prusaSettings,
         pyslmSettings: this.pyslmSettings,
@@ -447,6 +538,8 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       const slicingSettings = {
         profileName: this.slicingProfileName,
         slicingLib: this.selectedSlicerLib,
+        engravingMode: this.prusaSettings.engravingMode,
+        recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
         slic3rSettings: this.slic3rSettings,
         prusaSettings: this.prusaSettings,
         pyslmSettings: this.pyslmSettings,
@@ -565,13 +658,30 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       return new Promise<void>((resolve, reject) => {
         if (previewWebWorker) {
           previewWebWorker.addEventListener('message', async (e) => {
-            const { infillToDraw, contourToDraw, done, error } = e.data;
+            const {
+              infillToDraw,
+              contourToDraw,
+              gridToDraw,
+              variableGridStage1ToDraw,
+              variableGridStage2ToDraw,
+              variableGridStage3ToDraw,
+              surfaceSkinToDraw,
+              isEngravingLayer,
+              done,
+              error,
+            } = e.data;
 
             // handle drawing gcode line in the previewer
             if (this.slice3DPreviewerInstance) {
               this.slice3DPreviewerInstance.drawSliceResult(
                 contourToDraw,
-                infillToDraw
+                infillToDraw,
+                gridToDraw,
+                variableGridStage1ToDraw,
+                variableGridStage2ToDraw,
+                variableGridStage3ToDraw,
+                surfaceSkinToDraw,
+                isEngravingLayer
               );
             }
 
@@ -602,6 +712,70 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       }
     },
     /**
+     * Fetches a job's hidden slicer project and defers restoration until the
+     * slicer scene has mounted.
+     */
+    async openJobProject(filename: string) {
+      try {
+        const response = await API.loadJobProject(filename);
+        this.pendingJobProject = response.data;
+        if (this.threeDSlicerInstance) {
+          await this.restorePendingJobProject();
+        }
+      } catch (error: AxiosError | unknown) {
+        if (axios.isAxiosError(error)) {
+          throw new Error(
+            error.response?.data?.detail ||
+              'The slicer project could not be loaded.'
+          );
+        }
+        throw error;
+      }
+    },
+    /** Restores the saved transformed STL and its complete slicing settings. */
+    async restorePendingJobProject() {
+      if (!this.pendingJobProject || !this.threeDSlicerInstance) return;
+
+      const project = this.pendingJobProject;
+      this.isModelLoading = true;
+      try {
+        this.clearSlicingContainer();
+        this.setSlicingProfileSettings(project.slicingSettings);
+
+        const [metadata, encodedData] = project.modelFile.split(',', 2);
+        const mimeType =
+          metadata.match(/^data:(.*?);base64$/)?.[1] ||
+          'application/octet-stream';
+        const binary = atob(encodedData);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        const modelFile = new File([bytes], 'saved-job-model.stl', {
+          type: mimeType,
+        });
+
+        await this.threeDSlicerInstance.addSavedProjectModel(modelFile);
+        this.refreshPrintHeightRange();
+        if (project.printHeightLimit != null) {
+          this.isPrintHeightLimited = true;
+          this.setPrintHeightLowerLimit(project.printHeightLowerLimit ?? 0);
+          this.setPrintHeightLimit(project.printHeightLimit);
+        }
+        this.pendingJobProject = null;
+        this.resetSlicingContainerControls();
+      } finally {
+        this.isModelLoading = false;
+      }
+    },
+    setMachineCoordinateOverlayVisibility(isVisible: boolean) {
+      if (this.slice3DPreviewerInstance) {
+        this.slice3DPreviewerInstance.setMachineCoordinateOverlayVisible(
+          isVisible
+        );
+      }
+    },
+    /**
      *  Removes all models from the 3D scene, cancels any ongoing slicing process, and resets related states.
      * @returns {void}
      */
@@ -616,6 +790,11 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       this.sliceInfoStore.restSliceProgress();
       this.estimatedPrintTimeSeconds = null;
       this.previewedSlicingResultKey = '';
+      this.isPrintHeightLimited = false;
+      this.maximumPrintHeight = 0;
+      this.printHeightLimit = 0;
+      this.printHeightLowerLimit = 0;
+      this.threeDSlicerInstance?.setPrintHeightLimit(null);
       this.setSlicingProfileSettings(this.defaultSlicingProfile);
     },
     /**
@@ -686,6 +865,7 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       this.selectedModel = {
         ...model,
       };
+      this.refreshPrintHeightRange();
     },
     /**
      *  Updates the selection in the `ThreeDSlicer` instance based on model ID.
@@ -705,6 +885,57 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
     setUploadedModelsList(list: ModelData[]) {
       this.uploadedModels = [...list];
       this.isSlicingContainerEmpty = this.uploadedModels.length ? false : true;
+      this.refreshPrintHeightRange();
+    },
+    /** Refreshes the crop slider range after loading or transforming models. */
+    refreshPrintHeightRange() {
+      if (!this.threeDSlicerInstance) return;
+      this.maximumPrintHeight =
+        this.threeDSlicerInstance.getMaximumModelHeight();
+      if (!this.isPrintHeightLimited) {
+        this.printHeightLimit = this.maximumPrintHeight;
+        this.printHeightLowerLimit = 0;
+        this.threeDSlicerInstance.setPrintHeightLimit(null);
+        return;
+      }
+      this.setPrintHeightRange(
+        this.printHeightLowerLimit,
+        this.printHeightLimit
+      );
+    },
+    /** Applies a non-destructive horizontal print-height slab. */
+    setPrintHeightRange(lowerHeight: number, upperHeight: number) {
+      const maximum = Math.max(0, this.maximumPrintHeight);
+      const lower = Math.min(Math.max(0, lowerHeight), maximum);
+      const upper = Math.min(Math.max(lower, upperHeight), maximum);
+      this.printHeightLowerLimit = lower;
+      this.printHeightLimit = upper;
+      this.threeDSlicerInstance?.setPrintHeightLimit(upper, lower);
+    },
+    /** Applies a non-destructive horizontal print-height cutoff. */
+    setPrintHeightLimit(height: number) {
+      this.setPrintHeightRange(this.printHeightLowerLimit, height);
+    },
+    /** Applies the lower print-height cutoff for slab printing. */
+    setPrintHeightLowerLimit(height: number) {
+      this.setPrintHeightRange(
+        height,
+        this.printHeightLimit || this.maximumPrintHeight
+      );
+    },
+    /** Enables or disables print-height truncation without scaling the model. */
+    setPrintHeightLimitEnabled(enabled: boolean) {
+      this.isPrintHeightLimited = enabled;
+      if (!enabled) {
+        this.printHeightLimit = this.maximumPrintHeight;
+        this.printHeightLowerLimit = 0;
+        this.threeDSlicerInstance?.setPrintHeightLimit(null);
+      } else {
+        this.setPrintHeightRange(
+          this.printHeightLowerLimit,
+          this.printHeightLimit || this.maximumPrintHeight
+        );
+      }
     },
     /**
      *  Sets a flag indicating if the model is outside the build platform.
@@ -821,6 +1052,18 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
     removeGridHelper() {
       if (this.threeDSlicerInstance) {
         this.threeDSlicerInstance.removeGridHelper();
+      }
+    },
+    /**  Adds the machine coordinate scale to the 3D scene. */
+    addCoordinateScaleHelper() {
+      if (this.threeDSlicerInstance) {
+        this.threeDSlicerInstance.addCoordinateScaleHelper();
+      }
+    },
+    /**  Removes the machine coordinate scale from the 3D scene. */
+    removeCoordinateScaleHelper() {
+      if (this.threeDSlicerInstance) {
+        this.threeDSlicerInstance.removeCoordinateScaleHelper();
       }
     },
     /**  Adds a view helper (orientation cube) to the 3D scene. */

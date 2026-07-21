@@ -1,5 +1,5 @@
 <template>
-  <div ref="slicingGraph" class="row fit"></div>
+  <div ref="slicingGraph" class="slicing-container row fit"></div>
 </template>
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
@@ -26,3 +26,10 @@ onMounted(async () => {
   await slicingStore.createSlicingContainer();
 });
 </script>
+
+<style scoped>
+.slicing-container {
+  background-color: #000;
+  overflow: hidden;
+}
+</style>

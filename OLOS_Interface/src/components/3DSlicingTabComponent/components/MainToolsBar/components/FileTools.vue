@@ -45,6 +45,24 @@
         </q-item-section>
       </q-item>
 
+      <q-item clickable @click="handleImportGcode" v-close-popup>
+        <q-item-section avatar>
+          <q-avatar icon="upload_file" color="dark" text-color="white" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Import G-code</q-item-label>
+          <q-item-label caption>Upload .nc to preview</q-item-label>
+        </q-item-section>
+      </q-item>
+
+      <input
+        ref="gcodeFileInput"
+        type="file"
+        accept=".nc,.gcode,.cnc"
+        class="hidden-file-input"
+        @change="onGcodeFileSelected"
+      />
+
       <q-item clickable :disable="isSlicingContainerEmpty">
         <q-item-section avatar>
           <q-avatar icon="download" color="dark" text-color="white" />
@@ -96,11 +114,15 @@ import { Constants } from 'src/constants';
 import { use3DSlicingStore } from 'src/stores/3d-slicing';
 import { storeToRefs } from 'pinia';
 import { useMediaFilesManagementStore } from 'src/stores/media-files-management';
+import { ref } from 'vue';
+import PreviewSliceDialog from 'src/components/CustomDialogs/PreviewSliceDialog.vue';
+import { showNotifyMessage } from 'src/services/notify.messages.service';
 
 /**
  * Quasar framework instance, used for dialogs and UI interactions.
  */
 const $q = useQuasar();
+const notifyMessage = showNotifyMessage();
 
 /**
  * 3D Slicing store manages models, meshes, and slicing operations
@@ -113,6 +135,7 @@ const slicingStore = use3DSlicingStore();
  * media assets like 3D models.
  */
 const mediaFilesManagementStore = useMediaFilesManagementStore();
+const gcodeFileInput = ref<HTMLInputElement | null>(null);
 
 /**
  * Reactive reference to check if the slicing container is empty.
@@ -161,6 +184,28 @@ const handleAddNewModel = () => {
   );
 };
 
+const handleImportGcode = () => {
+  gcodeFileInput.value?.click();
+};
+
+const onGcodeFileSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+
+  if (!file) return;
+
+  try {
+    await slicingStore.importGcodeFileToSlicer(file);
+    notifyMessage.success(Constants.API_SUCCESS_MESSAGES.UPLOAD_MESSAGE);
+    showPreviewSliceDialog();
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Could not import G-code file.';
+    notifyMessage.error(message);
+  }
+};
+
 /**
  * Exports all models in the slicing container to the specified format.
  *
@@ -170,6 +215,12 @@ const handleExportAllModels = (format: string) => {
   showWriteFileNameDialog(format).onOk((filename) =>
     slicingStore.exportAllModels(filename, format)
   );
+};
+
+const showPreviewSliceDialog = () => {
+  return $q.dialog({
+    component: PreviewSliceDialog,
+  });
 };
 
 /**
@@ -213,3 +264,9 @@ const showConfirmNewProjectDialog = () => {
   });
 };
 </script>
+
+<style scoped>
+.hidden-file-input {
+  display: none;
+}
+</style>

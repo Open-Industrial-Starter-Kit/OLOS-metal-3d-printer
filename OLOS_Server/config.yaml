@@ -82,7 +82,8 @@ cameras_connection:
 
 # Serial connection settings for communicating with machine controller
 serial_connection:
-  port: COM10
+  controller_required: false # Keep the app available when no controller is connected
+  port: COM3
   timeout: 0.01 # Serial read timeout (seconds)
   baudrate: 115200 # Communication speed (must match controller firmware)
 

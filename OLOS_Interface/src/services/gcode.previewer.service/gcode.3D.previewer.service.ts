@@ -64,6 +64,14 @@ export class Gcode3DPreviewer {
   };
   /** @private @property {Array<THREE.Object3D>} layerObjects - An array of all rendered layer objects (meshes and line segments) for visibility control. */
   private layerObjects: Array<THREE.LineSegments | THREE.Mesh> = [];
+  /** Machine coordinate overlay for the OLSK circular bed and laser position. */
+  private machineCoordinateOverlay: THREE.Group = new THREE.Group();
+  /** Marker that follows the last visible laser/toolpath point. */
+  private laserHeadMarker: THREE.Mesh | null = null;
+  /** Latest known laser/toolpath endpoint per preview layer. */
+  private layerHeadPositions = new Map<number, THREE.Vector3>();
+  /** Whether the machine coordinate overlay is visible. */
+  private isMachineCoordinateOverlayVisible = false;
 
   /**
    * @constructor
@@ -113,6 +121,9 @@ export class Gcode3DPreviewer {
     // 5. Grid
     this.gridHelper = this.createGrid(); // Assuming this uses graphStepSize
     this.scene.add(this.gridHelper);
+    this.machineCoordinateOverlay = this.createMachineCoordinateOverlay();
+    this.machineCoordinateOverlay.visible = false;
+    this.scene.add(this.machineCoordinateOverlay);
 
     // 6. Job Layer
     this.jobLayer = {
@@ -174,6 +185,119 @@ export class Gcode3DPreviewer {
   }
 
   /**
+   * @private
+   * @description Places slice G-code in the machine bed coordinate frame.
+   * Machine X48/Y48 is scene center for the 96 mm circular OLSK bed.
+   */
+  private applyMachineBedFrameToJobLayer() {
+    this.jobLayer.group.position.set(
+      -this.platformWidth / 2,
+      0,
+      this.platformHeight / 2
+    );
+  }
+
+  private machineToScenePosition(x: number, y: number, z = 0) {
+    return new THREE.Vector3(
+      x - this.platformWidth / 2,
+      z,
+      this.platformHeight / 2 - y
+    );
+  }
+
+  private createMachineCoordinateOverlay() {
+    const group = new THREE.Group();
+    const radius = Math.max(this.platformWidth, this.platformHeight) / 2;
+    const origin = this.machineToScenePosition(0, 0, 0.25);
+    const xEnd = this.machineToScenePosition(this.platformWidth, 0, 0.25);
+    const yEnd = this.machineToScenePosition(0, this.platformHeight, 0.25);
+    const center = this.machineToScenePosition(
+      this.platformWidth / 2,
+      this.platformHeight / 2,
+      0.3
+    );
+
+    group.add(this.createOverlayLine(origin, xEnd, 0xff4b4b));
+    group.add(this.createOverlayLine(origin, yEnd, 0x45d483));
+    group.add(this.createCrossMarker(origin, 1.6, 0xffffff));
+    group.add(this.createCrossMarker(center, 1.9, 0x39a7ff));
+
+    const safeCircle = new THREE.RingGeometry(radius - 0.25, radius + 0.25, 128);
+    const safeCircleMaterial = new THREE.MeshBasicMaterial({
+      color: 0x39a7ff,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+    });
+    const safeCircleMesh = new THREE.Mesh(safeCircle, safeCircleMaterial);
+    safeCircleMesh.rotation.x = -Math.PI / 2;
+    safeCircleMesh.position.y = 0.1;
+    group.add(safeCircleMesh);
+
+    group.add(this.createTextSprite('X0 Y0 origin', origin.clone().add(new THREE.Vector3(6, 1.5, -2))));
+    group.add(this.createTextSprite('Bed center X48 Y48', center.clone().add(new THREE.Vector3(3, 1.5, 3))));
+    group.add(this.createTextSprite('X+', xEnd.clone().add(new THREE.Vector3(-5, 1.5, -2))));
+    group.add(this.createTextSprite('Y+', yEnd.clone().add(new THREE.Vector3(4, 1.5, 4))));
+
+    const laserGeometry = new THREE.SphereGeometry(1.4, 24, 12);
+    const laserMaterial = new THREE.MeshBasicMaterial({ color: 0xffd23f });
+    this.laserHeadMarker = new THREE.Mesh(laserGeometry, laserMaterial);
+    this.laserHeadMarker.position.copy(origin.clone().add(new THREE.Vector3(0, 2, 0)));
+    this.laserHeadMarker.add(
+      this.createTextSprite('Laser head', new THREE.Vector3(4, 2.5, 0))
+    );
+    group.add(this.laserHeadMarker);
+
+    return group;
+  }
+
+  private createOverlayLine(start: THREE.Vector3, end: THREE.Vector3, color: number) {
+    const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const material = new THREE.LineBasicMaterial({ color });
+    return new THREE.Line(geometry, material);
+  }
+
+  private createCrossMarker(position: THREE.Vector3, size: number, color: number) {
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.add(this.createOverlayLine(
+      new THREE.Vector3(-size, 0, 0),
+      new THREE.Vector3(size, 0, 0),
+      color
+    ));
+    group.add(this.createOverlayLine(
+      new THREE.Vector3(0, 0, -size),
+      new THREE.Vector3(0, 0, size),
+      color
+    ));
+    return group;
+  }
+
+  private createTextSprite(text: string, position: THREE.Vector3) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#ffffff';
+      context.font = '24px Arial';
+      context.fillText(text, 12, 40);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.copy(position);
+    sprite.scale.set(14, 3.5, 1);
+    return sprite;
+  }
+
+  /**
    * @description Appends the renderer's DOM element to a container and resizes it to fit.
    * If a new file is being drawn, it first clears the previous job layer.
    * @param {HTMLDivElement} container - The container element to attach the previewer to.
@@ -220,31 +344,147 @@ export class Gcode3DPreviewer {
    */
   drawSliceResult = (
     contourToDraw: Line[] | undefined,
-    infillToDraw: Line[] | undefined
+    infillToDraw: Line[] | undefined,
+    gridToDraw: Line[] | undefined,
+    variableGridStage1ToDraw: Line[] | undefined,
+    variableGridStage2ToDraw: Line[] | undefined,
+    variableGridStage3ToDraw: Line[] | undefined,
+    surfaceSkinToDraw: Line[] | undefined,
+    isEngravingLayer = false
   ) => {
-    console.log(`[drawSliceResult] contourToDraw=${contourToDraw?.length ?? 0} lines, infillToDraw=${infillToDraw?.length ?? 0} lines`);
-    let infillLayers, contourLayers;
+    console.log(
+      `[drawSliceResult] contourToDraw=${contourToDraw?.length ?? 0} lines, ` +
+        `infillToDraw=${infillToDraw?.length ?? 0} lines, ` +
+        `gridToDraw=${gridToDraw?.length ?? 0} lines, ` +
+        `variableGridStage2ToDraw=${variableGridStage2ToDraw?.length ?? 0} lines, ` +
+        `variableGridStage1ToDraw=${variableGridStage1ToDraw?.length ?? 0} lines, ` +
+        `variableGridStage3ToDraw=${variableGridStage3ToDraw?.length ?? 0} lines, ` +
+        `surfaceSkinToDraw=${surfaceSkinToDraw?.length ?? 0} lines`
+    );
+    let infillLayers, contourLayers, gridLayers, variableGridStage1Layers,
+      variableGridStage2Layers, variableGridStage3Layers, surfaceSkinLayers;
+    const allBatchLayers: SlicingLayers = {};
+    const mergeBatchLayers = (layers?: SlicingLayers) => {
+      if (!layers) return;
+      Object.entries(layers).forEach(([z, lines]) => {
+        allBatchLayers[Number(z)] = [
+          ...(allBatchLayers[Number(z)] ?? []),
+          ...lines,
+        ];
+      });
+    };
 
-    if (contourToDraw) {
+    if (contourToDraw?.length) {
       console.log('[drawSliceResult] Processing contour data');
       contourLayers = classifyGcodeLinesToLayers(contourToDraw);
+      mergeBatchLayers(contourLayers);
+      this.recordLayerHeadPositions(contourLayers);
       this.drawContour(contourLayers);
     } else {
       console.warn('[drawSliceResult] No contour data provided');
     }
 
-    if (infillToDraw) {
+    if (infillToDraw?.length) {
       infillLayers = classifyGcodeLinesToLayers(infillToDraw);
-      this.drawInfill(infillLayers);
+      mergeBatchLayers(infillLayers);
+      this.recordLayerHeadPositions(infillLayers);
+      this.drawInfill(
+        infillLayers,
+        isEngravingLayer
+          ? {
+              G0: 'crimson',
+              G1: 'crimson',
+              G2: 'crimson',
+              G3: 'crimson',
+              executedLine: 'crimson',
+            }
+          : {
+              G0: 'lightcoral',
+              G1: 'lightcoral',
+              G2: 'lightcoral',
+              G3: 'lightcoral',
+              executedLine: 'lightcoral',
+            },
+        isEngravingLayer ? 'engraving-infill' : 'infill'
+      );
     }
 
-    this.centralizeJobLayer();
+    if (gridToDraw?.length) {
+      gridLayers = classifyGcodeLinesToLayers(gridToDraw);
+      mergeBatchLayers(gridLayers);
+      this.recordLayerHeadPositions(gridLayers);
+      this.drawInfill(gridLayers, {
+        G0: 'dodgerblue',
+        G1: 'dodgerblue',
+        G2: 'dodgerblue',
+        G3: 'dodgerblue',
+        executedLine: 'dodgerblue',
+      }, 'engraving-grid');
+    }
 
-    contourLayers
-      ? this.updateZLevelList(contourLayers)
-      : infillLayers
-      ? this.updateZLevelList(infillLayers)
-      : null;
+    if (variableGridStage2ToDraw?.length) {
+      variableGridStage2Layers = classifyGcodeLinesToLayers(
+        variableGridStage2ToDraw
+      );
+      mergeBatchLayers(variableGridStage2Layers);
+      this.recordLayerHeadPositions(variableGridStage2Layers);
+      this.drawInfill(variableGridStage2Layers, {
+        G0: 'gold',
+        G1: 'gold',
+        G2: 'gold',
+        G3: 'gold',
+        executedLine: 'gold',
+      }, 'variable-grid-stage-2');
+    }
+
+    if (variableGridStage3ToDraw?.length) {
+      variableGridStage3Layers = classifyGcodeLinesToLayers(
+        variableGridStage3ToDraw
+      );
+      mergeBatchLayers(variableGridStage3Layers);
+      this.recordLayerHeadPositions(variableGridStage3Layers);
+      this.drawInfill(variableGridStage3Layers, {
+        G0: 'magenta',
+        G1: 'magenta',
+        G2: 'magenta',
+        G3: 'magenta',
+        executedLine: 'magenta',
+      }, 'variable-grid-stage-3');
+    }
+
+    if (variableGridStage1ToDraw?.length) {
+      variableGridStage1Layers = classifyGcodeLinesToLayers(
+        variableGridStage1ToDraw
+      );
+      mergeBatchLayers(variableGridStage1Layers);
+      this.recordLayerHeadPositions(variableGridStage1Layers);
+      this.drawInfill(variableGridStage1Layers, {
+        G0: 'deepskyblue',
+        G1: 'deepskyblue',
+        G2: 'deepskyblue',
+        G3: 'deepskyblue',
+        executedLine: 'deepskyblue',
+      }, 'variable-grid-stage-1');
+    }
+
+    if (surfaceSkinToDraw?.length) {
+      surfaceSkinLayers = classifyGcodeLinesToLayers(surfaceSkinToDraw);
+      mergeBatchLayers(surfaceSkinLayers);
+      this.recordLayerHeadPositions(surfaceSkinLayers);
+      this.drawInfill(surfaceSkinLayers, {
+        G0: 'darkgreen',
+        G1: 'darkgreen',
+        G2: 'darkgreen',
+        G3: 'darkgreen',
+        executedLine: 'darkgreen',
+      }, 'surface-skin');
+    }
+
+    this.applyMachineBedFrameToJobLayer();
+
+    if (Object.keys(allBatchLayers).length > 0) {
+      this.updateZLevelList(allBatchLayers);
+    }
   };
 
   /**
@@ -286,20 +526,64 @@ export class Gcode3DPreviewer {
     });
   }
 
+  private recordLayerHeadPositions(layers: SlicingLayers) {
+    Object.entries(layers).forEach(([z, layerLines]) => {
+      const lastLine = [...layerLines].reverse().find((line) => line.end);
+      if (!lastLine) return;
+      this.layerHeadPositions.set(
+        parseFloat(z),
+        this.machineToScenePosition(
+          lastLine.end.x,
+          lastLine.end.y,
+          lastLine.end.z ?? parseFloat(z)
+        )
+      );
+    });
+  }
+
   /**
    * @private
    * @description Renders the infill portions of sliced layers as simple line segments.
    * @param {SlicingLayers} layers - The G-code lines for infill, grouped by Z-height.
    */
-  private drawInfill(layers: SlicingLayers) {
+  private drawInfill(
+    layers: SlicingLayers,
+    colors: GCodeColors | null = null,
+    previewRole = 'infill'
+  ) {
     Object.entries(layers).forEach(([z, layerLines]) => {
       const currZ = parseFloat(z);
+      const opacityScale = 1;
       const { lineSegments } = generateDrawingDataFromGcode(
         layerLines,
-        null,
-        true
+        colors,
+        true,
+        opacityScale
       );
+      if (
+        previewRole === 'surface-skin' ||
+        previewRole === 'engraving-infill' ||
+        previewRole === 'engraving-grid' ||
+        previewRole.startsWith('variable-grid-stage-')
+      ) {
+        const opacityAttribute = lineSegments.geometry.getAttribute('opacity');
+        for (let index = 0; index < opacityAttribute.count; index++) {
+          opacityAttribute.setX(index, 1);
+        }
+        opacityAttribute.needsUpdate = true;
+
+        const material = lineSegments.material as THREE.ShaderMaterial;
+        material.depthTest = false;
+        material.depthWrite = false;
+        material.transparent = true;
+        material.needsUpdate = true;
+
+        lineSegments.position.y += 0.02;
+        lineSegments.renderOrder =
+          previewRole === 'surface-skin' ? 1000 : 900;
+      }
       lineSegments.userData.layerIndex = currZ;
+      lineSegments.userData.previewRole = previewRole;
       this.jobLayer.group.add(lineSegments);
       // track for later visibility control
       this.layerObjects.push(lineSegments);
@@ -370,6 +654,22 @@ export class Gcode3DPreviewer {
 
       obj.visible = isInsideVisibleRange;
     });
+    this.updateLaserHeadMarker(maxIndex);
+  }
+
+  private updateLaserHeadMarker(maxVisibleZ: number) {
+    if (!this.laserHeadMarker) return;
+    const visibleHeadLayers = Array.from(this.layerHeadPositions.keys())
+      .filter((z) => z <= maxVisibleZ)
+      .sort((a, b) => a - b);
+    const headPosition = this.layerHeadPositions.get(
+      visibleHeadLayers[visibleHeadLayers.length - 1]
+    );
+    if (headPosition) {
+      this.laserHeadMarker.position.copy(
+        headPosition.clone().add(new THREE.Vector3(0, 2, 0))
+      );
+    }
   }
 
   /**
@@ -384,6 +684,17 @@ export class Gcode3DPreviewer {
       max: 1,
     };
     this.layerObjects = [];
+    this.layerHeadPositions.clear();
+    this.applyMachineBedFrameToJobLayer();
+  }
+
+  setMachineCoordinateOverlayVisible(isVisible: boolean) {
+    this.isMachineCoordinateOverlayVisible = isVisible;
+    this.machineCoordinateOverlay.visible = isVisible;
+  }
+
+  get machineCoordinateOverlayVisible() {
+    return this.isMachineCoordinateOverlayVisible;
   }
 
   /**

@@ -56,6 +56,7 @@ class JobExecutionTimer:
         Useful when you want to finalize tracking but keep time info available.
         """
         if self._is_running:
+            self._pause_time = time.time()
             self._is_running = False
 
     def reset(self):

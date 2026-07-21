@@ -1,0 +1,710 @@
+%PDF-1.4
+%����
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Length 4027 >>
+stream
+BT
+/F2 18 Tf
+1 0 0 1 54 738.00 Tm
+(OLOS Metal 3D Printing Slicer Change Report) Tj
+/F1 10 Tf
+1 0 0 1 54 711.00 Tm
+(Generated: 2026-07-07) Tj
+/F1 10 Tf
+1 0 0 1 54 688.00 Tm
+(Scope: This report is based on the current workspace state and the work discussed in the) Tj
+/F1 10 Tf
+1 0 0 1 54 674.00 Tm
+(active Codex thread. It cannot include hidden details from other Codex chats unless those) Tj
+/F1 10 Tf
+1 0 0 1 54 660.00 Tm
+(details are present in files, generated G-code, screenshots, or notes in this workspace.) Tj
+/F2 14 Tf
+1 0 0 1 54 633.00 Tm
+(Executive Summary) Tj
+/F1 10 Tf
+1 0 0 1 54 610.00 Tm
+(The OLOS slicer has been extended from a basic vector contour/infill generator into a hybrid) Tj
+/F1 10 Tf
+1 0 0 1 54 596.00 Tm
+(metal 3D printing workflow with per-zone engraving, surface skin/roof generation, slanted) Tj
+/F1 10 Tf
+1 0 0 1 54 582.00 Tm
+(deck skin support, variable grid support below roofs, compact machine-specific G-code) Tj
+/F1 10 Tf
+1 0 0 1 54 568.00 Tm
+(formatting, and a more expressive 3D preview. Most changes are centered on the Prusa-based) Tj
+/F1 10 Tf
+1 0 0 1 54 554.00 Tm
+(slice path for metal laser printing.) Tj
+/F2 14 Tf
+1 0 0 1 54 527.00 Tm
+(Major G-code and Slicer Changes) Tj
+/F2 11 Tf
+1 0 0 1 54 502.00 Tm
+(1. OLSK / VisiCut-style machine format) Tj
+/F1 10 Tf
+1 0 0 1 54 481.00 Tm
+(- The generated G-code now uses the tested OLSK coordinate convention: machine bed) Tj
+/F1 10 Tf
+1 0 0 1 54 467.00 Tm
+(  reference with G53, work origin reset with G92, and compact laser moves similar to the) Tj
+/F1 10 Tf
+1 0 0 1 54 453.00 Tm
+(  known-good Benchy 3x3 file.) Tj
+/F1 10 Tf
+1 0 0 1 54 439.00 Tm
+(- Startup and layer routine blocks support bed offsets, parking, powder feed, recoater) Tj
+/F1 10 Tf
+1 0 0 1 54 425.00 Tm
+(  travel, return to origin, and layer-height stepping.) Tj
+/F1 10 Tf
+1 0 0 1 54 411.00 Tm
+(- Unsupported or unnecessary modal commands were avoided in the compact path because the) Tj
+/F1 10 Tf
+1 0 0 1 54 397.00 Tm
+(  target controller may stall on commands it already owns.) Tj
+/F1 10 Tf
+1 0 0 1 54 383.00 Tm
+(- Layer blocks are organized as routine, work origin reset, M3, infill/skin/contour) Tj
+/F1 10 Tf
+1 0 0 1 54 369.00 Tm
+(  content, M5, then return-to-origin travel.) Tj
+/F2 11 Tf
+1 0 0 1 54 353.00 Tm
+(2. Per-zone scan mode and exposure) Tj
+/F1 10 Tf
+1 0 0 1 54 332.00 Tm
+(- The slicer now supports first-layer, intermediate-layer, and remaining-layer zones.) Tj
+/F1 10 Tf
+1 0 0 1 54 318.00 Tm
+(- Each zone can use its own scan mode: vectoring or engraving.) Tj
+/F1 10 Tf
+1 0 0 1 54 304.00 Tm
+(- Each zone can use its own infill/contour power and feed rate.) Tj
+/F1 10 Tf
+1 0 0 1 54 290.00 Tm
+(- This enables engraved adhesion or transition layers followed by normal vectored body) Tj
+/F1 10 Tf
+1 0 0 1 54 276.00 Tm
+(  layers.) Tj
+/F2 11 Tf
+1 0 0 1 54 260.00 Tm
+(3. Engraving mode with rastered contour shell) Tj
+/F1 10 Tf
+1 0 0 1 54 239.00 Tm
+(- Engraving layers are generated as line-by-line raster rows instead of normal vector) Tj
+/F1 10 Tf
+1 0 0 1 54 225.00 Tm
+(  hatch paths.) Tj
+/F1 10 Tf
+1 0 0 1 54 211.00 Tm
+(- The contour shell is rastered together with the fill rows, and the G-code marks this) Tj
+/F1 10 Tf
+1 0 0 1 54 197.00 Tm
+(  with comments such as ENGRAVING COMBINED ROWS START.) Tj
+/F1 10 Tf
+1 0 0 1 54 183.00 Tm
+(- Engraving lead-in and lead-out compensation is calculated from feed rate and) Tj
+/F1 10 Tf
+1 0 0 1 54 169.00 Tm
+(  acceleration.) Tj
+/F1 10 Tf
+1 0 0 1 54 155.00 Tm
+(- The engraved shell can be matched to the calculated vector wall width so engraved and) Tj
+/F1 10 Tf
+1 0 0 1 54 141.00 Tm
+(  vectored regions have comparable physical wall thickness.) Tj
+/F2 11 Tf
+1 0 0 1 54 125.00 Tm
+(4. Engraved interior grid) Tj
+/F1 10 Tf
+1 0 0 1 54 104.00 Tm
+(- Engraved layers can fill the interior core with grid bands rather than leaving only an) Tj
+/F1 10 Tf
+1 0 0 1 54 90.00 Tm
+(  engraved contour shell.) Tj
+/F1 10 Tf
+1 0 0 1 54 76.00 Tm
+(- Recent changes convert engraved variable/interior grid into rastered grid bands inside) Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Length 4139 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 54 738.00 Tm
+(  the combined engraving rows, with sparse vector grid only as a fallback if band) Tj
+/F1 10 Tf
+1 0 0 1 54 724.00 Tm
+(  generation fails.) Tj
+/F1 10 Tf
+1 0 0 1 54 710.00 Tm
+(- This makes engraved first and intermediate layers behave more like true engraved layers) Tj
+/F1 10 Tf
+1 0 0 1 54 696.00 Tm
+(  instead of visibly vectored grid lines.) Tj
+/F2 11 Tf
+1 0 0 1 54 680.00 Tm
+(5. Vector infill and contours) Tj
+/F1 10 Tf
+1 0 0 1 54 659.00 Tm
+(- Vectoring mode supports line hatch and grid infill, configurable line count, hatch) Tj
+/F1 10 Tf
+1 0 0 1 54 645.00 Tm
+(  spacing, grid spacing, and grid clearance.) Tj
+/F1 10 Tf
+1 0 0 1 54 631.00 Tm
+(- Contour line count, contour/infill overlap, boundary fallback, scan order optimization,) Tj
+/F1 10 Tf
+1 0 0 1 54 617.00 Tm
+(  and hatch rotation grouping are handled in the vector generator.) Tj
+/F1 10 Tf
+1 0 0 1 54 603.00 Tm
+(- Normal infill is preserved in non-roof/non-variable-grid areas so support-grid logic) Tj
+/F1 10 Tf
+1 0 0 1 54 589.00 Tm
+(  does not accidentally hollow the rest of a layer.) Tj
+/F2 14 Tf
+1 0 0 1 54 571.00 Tm
+(Roof and Surface Skin Features) Tj
+/F2 11 Tf
+1 0 0 1 54 546.00 Tm
+(6. Surface solid skin) Tj
+/F1 10 Tf
+1 0 0 1 54 525.00 Tm
+(- A generated skin system was added for roof/deck surfaces. The skin is separate from) Tj
+/F1 10 Tf
+1 0 0 1 54 511.00 Tm
+(  ordinary sparse infill and appears in preview as dark green.) Tj
+/F1 10 Tf
+1 0 0 1 54 497.00 Tm
+(- Skin regions are excluded from normal infill so the same roof area is not filled first) Tj
+/F1 10 Tf
+1 0 0 1 54 483.00 Tm
+(  with infill and then overwritten by roof skin.) Tj
+/F1 10 Tf
+1 0 0 1 54 469.00 Tm
+(- Surface skin has its own power, feed rate, hatch spacing, layer count, and alternate-) Tj
+/F1 10 Tf
+1 0 0 1 54 455.00 Tm
+(  line behavior.) Tj
+/F2 11 Tf
+1 0 0 1 54 439.00 Tm
+(7. Flat roof skin) Tj
+/F1 10 Tf
+1 0 0 1 54 418.00 Tm
+(- Flat roof/deck detection identifies broad stable top-skin regions rather than every tiny) Tj
+/F1 10 Tf
+1 0 0 1 54 404.00 Tm
+(  cap or wall top.) Tj
+/F1 10 Tf
+1 0 0 1 54 390.00 Tm
+(- Flat roof skin supports independent layer count, hatch spacing, laser power, feed rate,) Tj
+/F1 10 Tf
+1 0 0 1 54 376.00 Tm
+(  raster direction, and cross hatch.) Tj
+/F1 10 Tf
+1 0 0 1 54 362.00 Tm
+(- Flat roof boundary modes include engraved boundary, vector boundary, contour-only, or no) Tj
+/F1 10 Tf
+1 0 0 1 54 348.00 Tm
+(  boundary.) Tj
+/F1 10 Tf
+1 0 0 1 54 334.00 Tm
+(- Flat skin can use a normal hatch pattern or spiral pattern with outside-in or inside-out) Tj
+/F1 10 Tf
+1 0 0 1 54 320.00 Tm
+(  direction.) Tj
+/F2 11 Tf
+1 0 0 1 54 304.00 Tm
+(8. Slanted roof / slanted deck skin) Tj
+/F1 10 Tf
+1 0 0 1 54 283.00 Tm
+(- Slanted surface skin detects usable sloped roof/deck strips by comparing future layers) Tj
+/F1 10 Tf
+1 0 0 1 54 269.00 Tm
+(  and filtering tiny wall/rim caps.) Tj
+/F1 10 Tf
+1 0 0 1 54 255.00 Tm
+(- Slanted skin can have its own layer count, hatch spacing, power, feed rate, raster) Tj
+/F1 10 Tf
+1 0 0 1 54 241.00 Tm
+(  direction, and cross hatch.) Tj
+/F1 10 Tf
+1 0 0 1 54 227.00 Tm
+(- The slanted deck is intended to be built layer by layer: each layer may contain normal) Tj
+/F1 10 Tf
+1 0 0 1 54 213.00 Tm
+(  infill, variable-grid support, and a local skin/roof strip where appropriate.) Tj
+/F2 11 Tf
+1 0 0 1 54 197.00 Tm
+(9. Roof-only exclusion logic) Tj
+/F1 10 Tf
+1 0 0 1 54 176.00 Tm
+(- Normal infill is subtracted from active roof/skin regions before vector G-code is) Tj
+/F1 10 Tf
+1 0 0 1 54 162.00 Tm
+(  emitted.) Tj
+/F1 10 Tf
+1 0 0 1 54 148.00 Tm
+(- This prevents the same local roof area from receiving ordinary infill and surface skin) Tj
+/F1 10 Tf
+1 0 0 1 54 134.00 Tm
+(  on the same layer.) Tj
+/F1 10 Tf
+1 0 0 1 54 120.00 Tm
+(- Other non-roof regions on the same layer still receive normal infill.) Tj
+/F2 11 Tf
+1 0 0 1 54 104.00 Tm
+(10. Roof hollow infill support) Tj
+/F1 10 Tf
+1 0 0 1 54 83.00 Tm
+(- A separate roof-hollow infill path exists for filling hollow roof cores when enabled.) Tj
+/F1 10 Tf
+1 0 0 1 54 69.00 Tm
+(- It has its own overlap setting and can use variable-grid settings when targeted to) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Length 3988 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 54 738.00 Tm
+(  hollow regions.) Tj
+/F1 10 Tf
+1 0 0 1 54 724.00 Tm
+(- In the latest inspected file this feature was disabled, but the code path remains) Tj
+/F1 10 Tf
+1 0 0 1 54 710.00 Tm
+(  available.) Tj
+/F2 14 Tf
+1 0 0 1 54 692.00 Tm
+(Variable Grid Features) Tj
+/F2 11 Tf
+1 0 0 1 54 667.00 Tm
+(11. Variable grid before roof) Tj
+/F1 10 Tf
+1 0 0 1 54 646.00 Tm
+(- Variable grid support can be generated in the layers before a roof or slanted roof.) Tj
+/F1 10 Tf
+1 0 0 1 54 632.00 Tm
+(- The main purpose is to strengthen regions underneath roof/skin so the final roof does) Tj
+/F1 10 Tf
+1 0 0 1 54 618.00 Tm
+(  not sit over unsupported sparse infill.) Tj
+/F1 10 Tf
+1 0 0 1 54 604.00 Tm
+(- Variable grid can target hollow regions or both hollow and main infill areas.) Tj
+/F2 11 Tf
+1 0 0 1 54 588.00 Tm
+(12. Multi-stage variable grid) Tj
+/F1 10 Tf
+1 0 0 1 54 567.00 Tm
+(- The slicer supports stage 1, stage 2, and stage 3 variable-grid sections.) Tj
+/F1 10 Tf
+1 0 0 1 54 553.00 Tm
+(- Stage 1 is closest to the roof. Stage 2 is farther below. Stage 3 is optional and can be) Tj
+/F1 10 Tf
+1 0 0 1 54 539.00 Tm
+(  enabled for a third support band.) Tj
+/F1 10 Tf
+1 0 0 1 54 525.00 Tm
+(- Each stage has its own lookahead layer count, grid spacing, hatch spacing, clearance,) Tj
+/F1 10 Tf
+1 0 0 1 54 511.00 Tm
+(  line count, and engraving-grid width settings.) Tj
+/F1 10 Tf
+1 0 0 1 54 497.00 Tm
+(- Preview colors distinguish stages: stage 1 is deepskyblue, stage 2 is gold, and stage 3) Tj
+/F1 10 Tf
+1 0 0 1 54 483.00 Tm
+(  is magenta.) Tj
+/F2 11 Tf
+1 0 0 1 54 467.00 Tm
+(13. Spatial variable grid for slanted layers) Tj
+/F1 10 Tf
+1 0 0 1 54 446.00 Tm
+(- Variable grid was changed from a whole-layer decision to a per-region decision.) Tj
+/F1 10 Tf
+1 0 0 1 54 432.00 Tm
+(- A single slanted layer can now contain far support grid, near support grid, roof skin,) Tj
+/F1 10 Tf
+1 0 0 1 54 418.00 Tm
+(  and normal infill in different local regions.) Tj
+/F1 10 Tf
+1 0 0 1 54 404.00 Tm
+(- This matches the desired slanted-deck behavior: 4x4 grid partially, 3x3 grid partially,) Tj
+/F1 10 Tf
+1 0 0 1 54 390.00 Tm
+(  and roof partially in the same layer, progressing with the slope.) Tj
+/F2 11 Tf
+1 0 0 1 54 374.00 Tm
+(14. Normal infill preservation around variable grid) Tj
+/F1 10 Tf
+1 0 0 1 54 353.00 Tm
+(- When variable-grid regions are generated, the slicer computes normal infill for region) Tj
+/F1 10 Tf
+1 0 0 1 54 339.00 Tm
+(  minus variable-grid support region.) Tj
+/F1 10 Tf
+1 0 0 1 54 325.00 Tm
+(- This prevents layers near roofs from becoming hollow outside the variable-grid patch.) Tj
+/F1 10 Tf
+1 0 0 1 54 311.00 Tm
+(- Variable-grid stages are also separated from each other to avoid one stage overwriting) Tj
+/F1 10 Tf
+1 0 0 1 54 297.00 Tm
+(  another in the same local area.) Tj
+/F2 11 Tf
+1 0 0 1 54 281.00 Tm
+(15. Grid overlap minimization) Tj
+/F1 10 Tf
+1 0 0 1 54 260.00 Tm
+(- Variable-grid hatches are phase-shifted relative to normal grid lines to reduce direct) Tj
+/F1 10 Tf
+1 0 0 1 54 246.00 Tm
+(  overlap.) Tj
+/F1 10 Tf
+1 0 0 1 54 232.00 Tm
+(- The slicer cannot eliminate every crossing, but it now tries to place grid lines in) Tj
+/F1 10 Tf
+1 0 0 1 54 218.00 Tm
+(  different spaces where possible.) Tj
+/F2 14 Tf
+1 0 0 1 54 200.00 Tm
+(Preview and Visualization Changes) Tj
+/F2 11 Tf
+1 0 0 1 54 175.00 Tm
+(16. Separate preview channels) Tj
+/F1 10 Tf
+1 0 0 1 54 154.00 Tm
+(- The 3D preview now separates normal infill, contour, engraving grid, variable-grid) Tj
+/F1 10 Tf
+1 0 0 1 54 140.00 Tm
+(  stages, and surface skin into different draw batches.) Tj
+/F1 10 Tf
+1 0 0 1 54 126.00 Tm
+(- This makes it possible to color and inspect each role independently.) Tj
+/F2 11 Tf
+1 0 0 1 54 110.00 Tm
+(17. Preview colors) Tj
+/F1 10 Tf
+1 0 0 1 54 89.00 Tm
+(- Normal infill is light coral/red, engraved infill is crimson, roof/skin is dark green,) Tj
+/F1 10 Tf
+1 0 0 1 54 75.00 Tm
+(  engraving grid is dodger blue, variable-grid stage 1 is deepskyblue, stage 2 is gold,) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Length 3949 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 54 738.00 Tm
+(  and stage 3 is magenta.) Tj
+/F1 10 Tf
+1 0 0 1 54 724.00 Tm
+(- High-opacity rendering is used for roof, engraved infill, engraving grid, and variable-) Tj
+/F1 10 Tf
+1 0 0 1 54 710.00 Tm
+(  grid overlays so they remain visible.) Tj
+/F2 11 Tf
+1 0 0 1 54 694.00 Tm
+(18. Compact G-code preview parsing) Tj
+/F1 10 Tf
+1 0 0 1 54 673.00 Tm
+(- The preview worker can parse compact VisiCut-style G-code where M3 is outside the split) Tj
+/F1 10 Tf
+1 0 0 1 54 659.00 Tm
+(  infill/contour sections.) Tj
+/F1 10 Tf
+1 0 0 1 54 645.00 Tm
+(- Preview-only contour comments are decoded so contours remain visible without adding) Tj
+/F1 10 Tf
+1 0 0 1 54 631.00 Tm
+(  executable contour moves to the print file.) Tj
+/F1 10 Tf
+1 0 0 1 54 617.00 Tm
+(- Preview-only grid and surface-skin comments are decoded for display while remaining) Tj
+/F1 10 Tf
+1 0 0 1 54 603.00 Tm
+(  harmless to the machine.) Tj
+/F2 11 Tf
+1 0 0 1 54 587.00 Tm
+(19. Red patch / squashed-object preview fix) Tj
+/F1 10 Tf
+1 0 0 1 54 566.00 Tm
+(- The preview fallback that caused the full object to appear squashed into lower layers) Tj
+/F1 10 Tf
+1 0 0 1 54 552.00 Tm
+(  was restricted so it does not run after marker-based batches have already been parsed.) Tj
+/F1 10 Tf
+1 0 0 1 54 538.00 Tm
+(- This addressed the large red patch that appeared after the rest of the body loaded in) Tj
+/F1 10 Tf
+1 0 0 1 54 524.00 Tm
+(  preview.) Tj
+/F2 11 Tf
+1 0 0 1 54 508.00 Tm
+(20. Engraving-layer preview detection) Tj
+/F1 10 Tf
+1 0 0 1 54 487.00 Tm
+(- The worker detects the last layer scan-mode header before each infill marker, so) Tj
+/F1 10 Tf
+1 0 0 1 54 473.00 Tm
+(  engraving layers can be previewed with engraving colors and behavior.) Tj
+/F1 10 Tf
+1 0 0 1 54 459.00 Tm
+(- This avoids treating engraved first/intermediate layers as ordinary vectoring layers in) Tj
+/F1 10 Tf
+1 0 0 1 54 445.00 Tm
+(  the preview.) Tj
+/F2 14 Tf
+1 0 0 1 54 427.00 Tm
+(Model Cropping and Placement) Tj
+/F2 11 Tf
+1 0 0 1 54 402.00 Tm
+(21. Print-height slab cropping) Tj
+/F1 10 Tf
+1 0 0 1 54 381.00 Tm
+(- The interface supports a non-destructive top and bottom print-height range.) Tj
+/F1 10 Tf
+1 0 0 1 54 367.00 Tm
+(- This lets a user print only a slab of the model, such as just the deck region and a) Tj
+/F1 10 Tf
+1 0 0 1 54 353.00 Tm
+(  little material below it.) Tj
+/F1 10 Tf
+1 0 0 1 54 339.00 Tm
+(- The selected lower and upper limits are stored with the slicing project data.) Tj
+/F2 11 Tf
+1 0 0 1 54 323.00 Tm
+(22. Drop model to platform) Tj
+/F1 10 Tf
+1 0 0 1 54 302.00 Tm
+(- The slicer store exposes a dropModelOnPlatform action so a cropped or transformed model) Tj
+/F1 10 Tf
+1 0 0 1 54 288.00 Tm
+(  can be moved down to the build plate.) Tj
+/F1 10 Tf
+1 0 0 1 54 274.00 Tm
+(- This is important when the lower portion of a model is removed and the remaining section) Tj
+/F1 10 Tf
+1 0 0 1 54 260.00 Tm
+(  would otherwise appear floating.) Tj
+/F2 14 Tf
+1 0 0 1 54 242.00 Tm
+(Machine Routine and Layer Handling) Tj
+/F2 11 Tf
+1 0 0 1 54 217.00 Tm
+(23. Recoater and powder routine) Tj
+/F1 10 Tf
+1 0 0 1 54 196.00 Tm
+(- A layer routine was added for resetting axes, moving to parking, feeding powder/reserve,) Tj
+/F1 10 Tf
+1 0 0 1 54 182.00 Tm
+(  stepping Z, sweeping the recoater out and home, and returning to the bed reference.) Tj
+/F1 10 Tf
+1 0 0 1 54 168.00 Tm
+(- The Z move uses the current layer height, not cumulative height, to avoid compounding Z) Tj
+/F1 10 Tf
+1 0 0 1 54 154.00 Tm
+(  errors.) Tj
+/F2 11 Tf
+1 0 0 1 54 138.00 Tm
+(24. Source-layer and output-layer tracking) Tj
+/F1 10 Tf
+1 0 0 1 54 117.00 Tm
+(- Layer headers include output layer number and source layer number, which is useful when) Tj
+/F1 10 Tf
+1 0 0 1 54 103.00 Tm
+(  crop/slab printing shifts the visible layer numbering.) Tj
+/F1 10 Tf
+1 0 0 1 54 89.00 Tm
+(- Example: a roof that visually belongs to source layer 51 can appear as output layer 12) Tj
+/F1 10 Tf
+1 0 0 1 54 75.00 Tm
+(  after bottom cropping.) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Length 4032 >>
+stream
+BT
+/F2 14 Tf
+1 0 0 1 54 738.00 Tm
+(G-code Validation and Safety Checks) Tj
+/F2 11 Tf
+1 0 0 1 54 713.00 Tm
+(25. Static G-code checks used during development) Tj
+/F1 10 Tf
+1 0 0 1 54 692.00 Tm
+(- Generated files were checked for unknown commands, powered G0 moves, powered parking) Tj
+/F1 10 Tf
+1 0 0 1 54 678.00 Tm
+(  moves, standalone S0 lines, M3/M5 balance, and whether normal infill remains outside) Tj
+/F1 10 Tf
+1 0 0 1 54 664.00 Tm
+(  variable-grid regions.) Tj
+/F1 10 Tf
+1 0 0 1 54 650.00 Tm
+(- The latest inspected file had balanced M3/M5 counts and no unknown command lines.) Tj
+/F2 11 Tf
+1 0 0 1 54 634.00 Tm
+(26. Known current hardware issue: faint laser trails) Tj
+/F1 10 Tf
+1 0 0 1 54 613.00 Tm
+(- The current G-code can still leave faint laser trails on the real machine even when it) Tj
+/F1 10 Tf
+1 0 0 1 54 599.00 Tm
+(  looks logically correct.) Tj
+/F1 10 Tf
+1 0 0 1 54 585.00 Tm
+(- The suspected cause is hardware/controller behavior while M3 remains armed and moves use) Tj
+/F1 10 Tf
+1 0 0 1 54 571.00 Tm
+(  S0 for off-state travel or lead-in/lead-out.) Tj
+/F1 10 Tf
+1 0 0 1 54 557.00 Tm
+(- A safer future format may need explicit M5 before non-print travel/gap moves and M3 only) Tj
+/F1 10 Tf
+1 0 0 1 54 543.00 Tm
+(  immediately before powered exposure moves. This may make files slower and less compact) Tj
+/F1 10 Tf
+1 0 0 1 54 529.00 Tm
+(  but safer for this laser driver.) Tj
+/F2 14 Tf
+1 0 0 1 54 511.00 Tm
+(Important Files Touched or Involved) Tj
+/F1 10 Tf
+1 0 0 1 54 488.00 Tm
+(- OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py: main Prusa-based metal) Tj
+/F1 10 Tf
+1 0 0 1 54 474.00 Tm
+(  slicing logic, surface skin, variable grid, engraving, and G-code generation.) Tj
+/F1 10 Tf
+1 0 0 1 54 460.00 Tm
+(- OLOS_Server/src/utils/threeD_printing_slice/src/slicers_shared_methods.py: shared) Tj
+/F1 10 Tf
+1 0 0 1 54 446.00 Tm
+(  machine initialization, layer routine, exposure zones, and compact laser formatting) Tj
+/F1 10 Tf
+1 0 0 1 54 432.00 Tm
+(  helpers.) Tj
+/F1 10 Tf
+1 0 0 1 54 418.00 Tm
+(- OLOS_Interface/src/workers/slice.previewer.worker.ts: parsing of compact G-code,) Tj
+/F1 10 Tf
+1 0 0 1 54 404.00 Tm
+(  variable-grid sections, roof/skin preview, and engraving-layer preview detection.) Tj
+/F1 10 Tf
+1 0 0 1 54 390.00 Tm
+(- OLOS_Interface/src/services/gcode.previewer.service/gcode.3D.previewer.service.ts:) Tj
+/F1 10 Tf
+1 0 0 1 54 376.00 Tm
+(  preview drawing roles, colors, opacity, and layer tracking.) Tj
+/F1 10 Tf
+1 0 0 1 54 362.00 Tm
+(- OLOS_Interface/src/stores/3d-slicing.ts: crop/slab controls, print-height range,) Tj
+/F1 10 Tf
+1 0 0 1 54 348.00 Tm
+(  generated G-code handling, and preview dispatch.) Tj
+/F1 10 Tf
+1 0 0 1 54 334.00 Tm
+(- OLOS_Interface/src/interfaces/3D.slicing.interface.ts: typed settings for surface skin,) Tj
+/F1 10 Tf
+1 0 0 1 54 320.00 Tm
+(  slanted skin, variable grid, engraving grid, and related controls.) Tj
+/F2 14 Tf
+1 0 0 1 54 302.00 Tm
+(Recommended Verification Before Printing) Tj
+/F1 10 Tf
+1 0 0 1 54 279.00 Tm
+(- Regenerate the G-code after code changes; old .nc files do not update automatically.) Tj
+/F1 10 Tf
+1 0 0 1 54 265.00 Tm
+(- Inspect early engraved layers for RASTER GRID INTERIOR CORE and absence of old ENGRAVING) Tj
+/F1 10 Tf
+1 0 0 1 54 251.00 Tm
+(  VARIABLE GRID START markers.) Tj
+/F1 10 Tf
+1 0 0 1 54 237.00 Tm
+(- Inspect slanted roof layers for coexistence of normal infill, variable-grid stage 2,) Tj
+/F1 10 Tf
+1 0 0 1 54 223.00 Tm
+(  variable-grid stage 1, and surface skin where expected.) Tj
+/F1 10 Tf
+1 0 0 1 54 209.00 Tm
+(- Run a low-power or dry motion test when changing laser-off formatting, because the real) Tj
+/F1 10 Tf
+1 0 0 1 54 195.00 Tm
+(  machine has shown faint marking during S0 travel moves.) Tj
+/F1 10 Tf
+1 0 0 1 54 181.00 Tm
+(- If faint trails continue, prioritize a hardware-safe laser state format over) Tj
+/F1 10 Tf
+1 0 0 1 54 167.00 Tm
+(  compactness: explicit M5 around all non-print moves, optional dwell after off, and re-) Tj
+/F1 10 Tf
+1 0 0 1 54 153.00 Tm
+(  arm only before exposure.) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 13 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 3 0 R >>
+endobj
+9 0 obj
+<< /Type /Page /Parent 13 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 4 0 R >>
+endobj
+10 0 obj
+<< /Type /Page /Parent 13 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 5 0 R >>
+endobj
+11 0 obj
+<< /Type /Page /Parent 13 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 6 0 R >>
+endobj
+12 0 obj
+<< /Type /Page /Parent 13 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 7 0 R >>
+endobj
+13 0 obj
+<< /Type /Pages /Kids [8 0 R 9 0 R 10 0 R 11 0 R 12 0 R] /Count 5 >>
+endobj
+14 0 obj
+<< /Type /Catalog /Pages 13 0 R >>
+endobj
+xref
+0 15
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000004239 00000 n 
+0000008430 00000 n 
+0000012470 00000 n 
+0000016471 00000 n 
+0000020555 00000 n 
+0000020692 00000 n 
+0000020829 00000 n 
+0000020967 00000 n 
+0000021105 00000 n 
+0000021243 00000 n 
+0000021328 00000 n 
+trailer
+<< /Size 15 /Root 14 0 R >>
+startxref
+21379
+%%EOF

@@ -1,7 +1,10 @@
 Backend:
-cd C:\Users\Dharunjaz\Open-Lab-Operating-System-TEST\OLOS_Server
+cd /d C:\Open-Lab-Operating-System-TEST\OLOS_Server
+set PATH=C:\Program Files\GTK3-Runtime Win64\bin;%PATH%
 .\venv\Scripts\python.exe .\src\main.py
 
 Frontend: 
-cd C:\Users\Dharunjaz\Open-Lab-Operating-System-TEST\OLOS_Interface
-yarn dev
+cd /d C:\Open-Lab-Operating-System-TEST\OLOS_Interface
+set PATH=C:\Program Files\nodejs;%PATH%
+npm run dev
+

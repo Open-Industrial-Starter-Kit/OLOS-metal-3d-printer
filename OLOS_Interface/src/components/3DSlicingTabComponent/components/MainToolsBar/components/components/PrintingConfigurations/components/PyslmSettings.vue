@@ -1,5 +1,93 @@
 <template>
   <q-list bordered class="rounded-borders">
+    <q-item>
+      <q-item-section>
+        <div class="row items-center justify-between">
+          <span class="text-bold text-caption">Engraving Mode:</span>
+          <q-icon name="help" size="xs" color="blue-grey-9">
+            <q-tooltip
+              anchor="center right"
+              self="center left"
+              :offset="[10, 10]"
+            >
+              Toggle between traditional vectoring mode (multiple parallel lines) and line-by-line engraving mode (single thick line per layer)
+            </q-tooltip>
+          </q-icon>
+        </div>
+        <q-btn-toggle
+          v-model="pyslmSettings.engravingMode"
+          :options="[
+            { label: 'Vectoring', value: 'vectoring' },
+            { label: 'Engraving', value: 'engraving' }
+          ]"
+          color="primary"
+          text-color="white"
+          toggle-color="orange"
+          class="full-width"
+        />
+      </q-item-section>
+    </q-item>
+
+    <q-item v-if="pyslmSettings.engravingMode === 'engraving'">
+      <q-item-section>
+        <div class="row items-center justify-between">
+          <span class="text-bold text-caption">Engraving Acceleration:</span>
+          <q-icon name="help" size="xs" color="blue-grey-9">
+            <q-tooltip anchor="center right" self="center left" :offset="[10, 10]">
+              XY gantry acceleration (mm/s²) used to calculate laser lead-in distance.
+              Match this to your machine's $120/$121 GRBL setting.
+            </q-tooltip>
+          </q-icon>
+        </div>
+        <q-input
+          v-model.number="pyslmSettings.engravingAcceleration"
+          type="number"
+          outlined
+          :color="colorTheme"
+          dense
+          suffix="mm/s²"
+          min="1"
+          :rules="[(val: number) => val > 0 || 'Acceleration must be above 0']"
+        />
+      </q-item-section>
+    </q-item>
+
+    <q-item>
+      <q-item-section>
+        <div class="row items-center justify-between">
+          <span class="text-bold text-caption">Skip Infill:</span>
+          <q-icon name="help" size="xs" color="blue-grey-9">
+            <q-tooltip anchor="center right" self="center left" :offset="[10, 10]">
+              When enabled, only the outer contour is sintered — no infill is generated. Useful for hollow parts like rings where interior fill is not needed.
+            </q-tooltip>
+          </q-icon>
+        </div>
+        <q-toggle
+          v-model="pyslmSettings.skipInfill"
+          :color="colorTheme"
+          label="Contour only (no infill)"
+        />
+      </q-item-section>
+    </q-item>
+
+    <q-item>
+      <q-item-section>
+        <div class="row items-center justify-between">
+          <span class="text-bold text-caption">Pure Raster Mode:</span>
+          <q-icon name="help" size="xs" color="blue-grey-9">
+            <q-tooltip anchor="center right" self="center left" :offset="[10, 10]">
+              Skip the vector contour pass — every feature (walls, fill, edges) is built solely from horizontal raster scan lines. Recommended when Engraving Mode is active. The outer and inner edges of the part emerge naturally from the start/end of each scan line.
+            </q-tooltip>
+          </q-icon>
+        </div>
+        <q-toggle
+          v-model="pyslmSettings.skipContour"
+          :color="colorTheme"
+          label="Raster only (no vector contour)"
+        />
+      </q-item-section>
+    </q-item>
+
     <q-expansion-item label="Layer Settings" icon="line_style">
       <q-card bordered>
         <q-card-section class="q-gutter-y-sm">
@@ -384,6 +472,37 @@
             max="10"
             :rules="[ (val: number) => val && 1 <= val && val <= 10
             || 'Infill line count should be between 1 and 10']"
+          />
+        </q-card-section>
+
+        <q-card-section class="q-gutter-y-sm">
+          <div class="row items-center justify-between">
+            <span class="text-bold text-caption">Infill Line Thickness (Line-by-Line Mode):</span>
+            <q-icon name="help" size="xs" color="blue-grey-9">
+              <q-tooltip
+                anchor="center right"
+                self="center left"
+                :offset="[10, 10]"
+              >
+                {{
+                  Constants.PRINTING_SETTINGS_ASSISTANT_MESSAGES
+                    .INFILL_LINE_THICKNESS
+                }}
+              </q-tooltip>
+            </q-icon>
+          </div>
+          <q-input
+            v-model.number="pyslmSettings.infillLineThickness"
+            type="number"
+            outlined
+            :color="colorTheme"
+            dense
+            min="0.1"
+            max="5"
+            step="0.1"
+            suffix="mm"
+            :rules="[ (val: number) => val && 0.1 <= val && val <= 5
+            || 'Infill line thickness should be between 0.1 and 5 mm']"
           />
         </q-card-section>
 

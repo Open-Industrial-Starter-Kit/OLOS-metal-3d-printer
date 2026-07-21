@@ -29,14 +29,55 @@ Endpoints:
         Upload a job file from a connected USB device.
 """
 
+import json
+import os
+
 from fastapi import APIRouter, UploadFile, HTTPException, File, Request
 from fastapi.responses import JSONResponse, FileResponse
 
-from ..models.jobs_manager_model import GcodeFileData, JobsManagerResponse, RenameJobData, USBJobFileData
+from ..models.jobs_manager_model import GcodeFileData, JobProjectData, JobsManagerResponse, RenameJobData, SaveJobData, USBJobFileData
 from ..services.jobs_manager_service import JobsManagerService
 from ..constants import FastAPIServerConstants as constants
+from files_manager.constants import FilesManagerConstants
 
 router = APIRouter()
+PROJECT_SUFFIX = ".olos-project.json"
+
+
+def _project_path(filename: str):
+    if not filename or os.path.basename(filename) != filename:
+        raise ValueError("Invalid job filename")
+    return os.path.join(
+        FilesManagerConstants.JOB_BASE_DIR, filename + PROJECT_SUFFIX)
+
+
+@router.post("/project/{filename}")
+def save_job_project(filename: str, project_data: JobProjectData):
+    """Save internal model and slicer settings beside a G-code job."""
+    try:
+        os.makedirs(FilesManagerConstants.JOB_BASE_DIR, exist_ok=True)
+        with open(_project_path(filename), "w", encoding="utf-8") as project_file:
+            json.dump(project_data.dict(), project_file)
+        return {"success": True}
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@router.get("/project/{filename}")
+def load_job_project(filename: str):
+    """Load internal model and slicer settings for a G-code job."""
+    try:
+        path = _project_path(filename)
+        if not os.path.exists(path):
+            raise HTTPException(
+                status_code=404,
+                detail="This job has no saved slicer model or settings.")
+        with open(path, "r", encoding="utf-8") as project_file:
+            return json.load(project_file)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
 
 
 @router.post("/open/{filename}", response_model=JobsManagerResponse)
@@ -110,6 +151,9 @@ def delete_job(request: Request, filename: str):
         shared_core_data = request.app.shared_core_data
         core_response = JobsManagerService.delete_file(
             shared_core_data, filename)
+        project_path = _project_path(filename)
+        if os.path.exists(project_path):
+            os.remove(project_path)
 
         return JSONResponse(content=core_response, status_code=200)
 
@@ -162,6 +206,25 @@ def rename_job(request: Request, rename_data: RenameJobData):
         shared_core_data = request.app.shared_core_data
         core_response = JobsManagerService.rename_file(
             shared_core_data, rename_data.old_filename, rename_data.new_filename)
+        old_project_path = _project_path(rename_data.old_filename)
+        new_project_path = _project_path(rename_data.new_filename)
+        if os.path.exists(old_project_path):
+            os.replace(old_project_path, new_project_path)
+
+        return JSONResponse(content=core_response, status_code=200)
+
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@router.put("/save", response_model=JobsManagerResponse)
+def save_job(request: Request, save_data: SaveJobData):
+    """Save edited G-code content for an existing job file."""
+
+    try:
+        shared_core_data = request.app.shared_core_data
+        core_response = JobsManagerService.save_file(
+            shared_core_data, save_data.filename, save_data.file_content)
 
         return JSONResponse(content=core_response, status_code=200)
 

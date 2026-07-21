@@ -272,8 +272,11 @@ class JobsManager:
 
         file_path = os.path.join(self._job_base_directory, filename)
 
+        if isinstance(file_content, bytes):
+            file_content = file_content.decode('utf-8')
+
         # Split content into lines
-        lines = file_content.decode('utf-8').splitlines()
+        lines = file_content.splitlines()
 
         # Join the lines back together
         updated_content = '\n'.join(lines)

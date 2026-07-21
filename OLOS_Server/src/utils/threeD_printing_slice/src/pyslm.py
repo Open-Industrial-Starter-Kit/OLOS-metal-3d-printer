@@ -71,9 +71,12 @@ class Pyslm:
                         min_x=min_x, min_y=min_y, max_x=max_x, max_y=max_y,
                         image_size=output_image_size,
                         layer_index=layer_index,
-                        total_layers=total_layers))
+                        total_layers=total_layers,
+                        engraving_mode=slicing_data.get('engraving_mode', 'vectoring'),
+                        skip_infill=slicing_data.get('skip_infill', False),
+                        skip_contour=slicing_data.get('skip_contour', False)))
 
-                if contour_gcode and infill_gcode:
+                if infill_gcode is not None and contour_gcode is not None:
                     gcode_content = generate_gcode_for_layer(
                         image_to_gcode_helper=slicer.image_to_gcode_helper,
                         img_infill=None, svg_contour=None,
@@ -126,11 +129,14 @@ class Pyslm:
 
     def _slice_layer(self, solidPart, infill, z, slicing_data,
                      min_x, min_y, max_x, max_y, image_size,
-                     layer_index=None, total_layers=None):
+                     layer_index=None, total_layers=None, engraving_mode='vectoring',
+                     skip_infill=False, skip_contour=False):
         geomSliceVector = solidPart.getVectorSlice(z)
         layer = infill.hatch(geomSliceVector)
 
-        infill_gcode, contour_gcode = None, None
+        # "" signals "skipped by user choice" (distinct from None = "not generated yet")
+        infill_gcode = "" if skip_infill else None
+        contour_gcode = "" if skip_contour else None
         user_image_size = image_size
 
         if layer:
@@ -148,13 +154,16 @@ class Pyslm:
                 user_image_size=user_image_size,
                 layer_index=layer_index, total_layers=total_layers)
 
-            if hatchGeoms:
+            if not skip_infill and (hatchGeoms or (engraving_mode == 'engraving' and hatchContours)):
                 infill_gcode = self._generate_infill_vector_gcode(
-                    hatchGeoms, hatchContours, min_x, min_y, max_x, max_y,
+                    hatchGeoms or [], hatchContours, min_x, min_y, max_x, max_y,
                     image_size, infill_settings,
                     slicing_data.get("infill_line_count", 1),
-                    slicing_data.get("line_bundle_spacing", 0.2))
-            if hatchContours:
+                    slicing_data.get("line_bundle_spacing", 0.2),
+                    engraving_mode=engraving_mode,
+                    infill_line_thickness=slicing_data.get("infill_line_thickness", 0.8),
+                    engraving_acceleration=slicing_data.get("engraving_acceleration", 500))
+            if not skip_contour and hatchContours:
                 contour_gcode = self._generate_contour_vector_gcode(
                     hatchContours, min_x, min_y, max_x, max_y, image_size,
                     contour_settings,
@@ -179,10 +188,18 @@ class Pyslm:
 
     def _generate_infill_vector_gcode(self, hatchGeoms, hatchContours,
                                       min_x, min_y, max_x, max_y, image_size,
-                                      infill_settings, line_count, spacing):
+                                      infill_settings, line_count, spacing,
+                                      engraving_mode='vectoring', infill_line_thickness=0.8,
+                                      engraving_acceleration=500):
+        clip_region = self._contour_region(hatchContours)
+
+        if engraving_mode == 'engraving':
+            return self._generate_raster_scan_gcode(
+                clip_region, min_x, min_y, max_x, max_y, image_size,
+                infill_settings, infill_line_thickness)
+
         scale_x, scale_y = self._calculate_scale_factor(
             min_x, min_y, max_x, max_y, image_size)
-        clip_region = self._contour_region(hatchContours)
         line_count = self._normalise_line_count(line_count)
         spacing = float(spacing)
         lines = []
@@ -196,10 +213,60 @@ class Pyslm:
             end = self._scale_point(coords[-1], min_x, min_y, scale_x, scale_y)
             if start == end:
                 continue
-            lines.append(
-                f"G1 X{start[0]:.4f} Y{start[1]:.4f} S0F{int(infill_settings['speed'])}")
+            lines.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f} S0")
             lines.append(
                 f"G1 X{end[0]:.4f} Y{end[1]:.4f} S{int(infill_settings['power'])}F{int(infill_settings['speed'])}")
+
+        return "\n".join(lines)
+
+    def _generate_raster_scan_gcode(self, clip_region, min_x, min_y, max_x, max_y,
+                                    image_size, infill_settings, step):
+        """
+        Raster (line-by-line) scan: horizontal sweep lines at `step` mm spacing,
+        alternating direction (boustrophedon). Each line is clipped to the contour
+        region. G0 for rapid travel between lines, G1 for laser-on cuts.
+        The marker comment causes slicers_shared_methods to skip redundant clamping.
+        """
+        scale_x, scale_y = self._calculate_scale_factor(
+            min_x, min_y, max_x, max_y, image_size)
+        power = int(infill_settings['power'])
+        speed = int(infill_settings['speed'])
+
+        step = max(0.001, float(step))
+        world_step = step / scale_y if scale_y > 0 else step
+        if world_step <= 0:
+            return ""
+
+        lines = [";ENGRAVING INFILL (PySlm Raster Scan)"]
+        row = 0
+        y = min_y
+
+        while y <= max_y + world_step * 0.5:
+            scan_line = LineString([(min_x - 1.0, y), (max_x + 1.0, y)])
+            if clip_region and not clip_region.is_empty:
+                clipped = scan_line.intersection(clip_region)
+            else:
+                clipped = LineString([(min_x, y), (max_x, y)])
+
+            segments = self._extract_lines(clipped)
+            if segments:
+                segments.sort(key=lambda s: min(c[0] for c in s.coords))
+                if row % 2 == 1:
+                    segments = [LineString(list(reversed(list(s.coords))))
+                                for s in reversed(segments)]
+                for seg in segments:
+                    coords = list(seg.coords)
+                    if len(coords) < 2:
+                        continue
+                    start = self._scale_point(coords[0], min_x, min_y, scale_x, scale_y)
+                    end = self._scale_point(coords[-1], min_x, min_y, scale_x, scale_y)
+                    if abs(start[0] - end[0]) < 0.0001 and abs(start[1] - end[1]) < 0.0001:
+                        continue
+                    lines.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f} S0")
+                    lines.append(f"G1 X{end[0]:.4f} Y{end[1]:.4f} S{power}F{speed}")
+
+            y += world_step
+            row += 1
 
         return "\n".join(lines)
 
@@ -218,8 +285,7 @@ class Pyslm:
             if len(pts) < 2:
                 continue
             start = pts[0]
-            lines.append(
-                f"G1 X{start[0]:.4f} Y{start[1]:.4f} S0F{int(contour_settings['speed'])}")
+            lines.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f} S0")
             for pt in pts[1:]:
                 lines.append(
                     f"G1 X{pt[0]:.4f} Y{pt[1]:.4f} S{int(contour_settings['power'])}F{int(contour_settings['speed'])}")

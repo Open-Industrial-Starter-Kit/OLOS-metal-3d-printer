@@ -13,6 +13,8 @@ Overall Summary
 - Made estimated print time include actual G-code motion time, including recoater/routine moves.
 - Improved preview support for VisiCut-style G-code, with blue contour walls and red infill lines.
 - Fixed several Prusa preview/G-code issues around layer count, routine Z interpretation, infill clipping, contour visibility, small model clipping, and stale preview updates.
+- Fixed Prusa output centering so generated G-code is placed on the 96 mm circular bed center at X48/Y48 instead of starting near X0/Y0.
+- Added machine coordinate overlays for checking origin, bed center, scale, and laser/toolpath position.
 
 Latest LPBF Additions
 ---------------------
@@ -30,9 +32,115 @@ Latest LPBF Additions
   Adds a Prusa machine-routine setting for reservoir movement per layer. Default is 0.3 mm and is emitted as the current negative A-axis move.
 - Unit Fix:
   Corrected Prusa Contour/Wall Speed display from mm to mm/min.
+- Bed-Centered Output:
+  Centers Prusa-generated contour/infill geometry on the 96 mm circular bed. Verified benchy_fixed_center.nc has 0 exposure moves outside the bed and about 19 mm radial safety margin.
+- Coordinate Scale and Overlay:
+  Adds a Slice Preview "Machine coordinates" toggle and a View > Coordinate Scale toggle for checking X0/Y0, X48/Y48 bed center, X/Y scale ticks, and laser/toolpath position.
 
 Validation Summary
 ------------------
 - Backend Python compile checks passed.
 - Frontend yarn lint passed.
 - Generated G-code was inspected for layer counts, S power values, feedrate formatting, contour/infill separation, routine behavior, and VisiCut-style structure.
+- Jobs saved from the 3D slicer now retain an internal transformed model and complete slicing settings. Jobs Manager includes "Open in Slicer" to restore them, while preview/execution and normal downloads continue using only the `.nc` G-code file.
+- Added Prusa Lines/Grid infill selection. Grid adds a perpendicular hatch
+  direction, switches the laser off across existing hatch lines to prevent
+  powered overlap, and provides independent grid-spacing and crossing-clearance
+  controls. Clearance follows the absolute contour/infill overlap percentage
+  by default, with a toggle for a custom millimetre value.
+- Fixed saved slicer projects failing to retain their model/settings when
+  reactive Pinia settings could not be cloned.
+- Added a Prusa print-height limiter with a vertical slider and millimetre
+  input. It clips the preview and stops G-code at the selected complete layer
+  without Z-scaling or deforming the model. Saved jobs remember the cutoff.
+- The cutoff guide is bed-sized, and releasing the slider automatically
+  regenerates G-code, estimated time, and slice-preview data.
+- Fixed Prusa engraving mode and added calculated laser-off gantry lead-in and
+  lead-out moves using d=(F/60)^2/(2a). Engraving uses single contour/hatch
+  tracks, zone-specific feedrates, a configurable XY acceleration, and
+  bed-validated compensation travel.
+June 11, 2026 - Engraving audit:
+- Confirmed feedrates are converted from mm/min to mm/s before calculating
+  d = v^2/(2a).
+- Added strict engraving-mode and acceleration validation.
+- Added per-zone feedrate, velocity, and lead-distance reporting.
+- Added 96 mm circular-bed validation and circular lead-point clamping.
+- Added M5 at the start of every recoating routine.
+- Hid inactive Prusa hollowing, support, and pad controls.
+- Full 24-layer Benchy engraving test passed with correct zone values,
+  routine skipping/order, laser state, and bed bounds.
+- Engraving safety follow-up: compensated paths are no longer silently
+  clamped after generation. A slice now fails when its complete calculated
+  lead-in/out cannot fit within the 96 mm circular scan area.
+- Added routine begin/end markers, protected compensated paths from legacy
+  raster cleanup, clarified the UI as centerline scanning, and verified a
+  real four-layer Prusa slice including zone changes and routine skipping.
+June 12, 2026 - Coordinate and execution safety:
+- Fixed Prusa's physical-bed/work-coordinate mismatch by mapping the 96 mm
+  bed center to X48 Y48 throughout initialization, layers, and routines.
+- Added a pre-run circular-bed boundary check that blocks unsafe older files.
+- Stop is now available immediately during a requested job, and failed starts
+  no longer leave the interface showing a running job.
+- Corrected the frontend platform dimensions to 96 x 96 mm.
+June 12, 2026 - Streaming and controls:
+- Fixed job stalls caused by counting GRBL status/pause/resume/reset bytes as
+  commands that should return "ok".
+- Comments and blank file lines are no longer sent to the controller.
+- Pause now visibly changes to Play/Resume, completed jobs clear their running
+  state, and Stop no longer produces a negative job timer.
+June 15, 2026 - Live execution preview and acknowledgement safety:
+- Added a UGS-style Job Preview status panel with current G-code line, command,
+  and sent/acknowledged/rejected state.
+- Job progress and toolpath highlighting now advance only after GRBL "ok".
+- Fixed highlight drift from comments, routines, non-motion commands, and
+  variable-size preview batches.
+- Rejected commands now require Stop/reset; disconnects and restarted
+  3D-printer jobs no longer retain false execution state.
+- Removed a stale duplicate OLOS backend process tree that could contend for
+  COM10, then restarted one clean API/WebSocket backend instance.
+June 15, 2026 - UGS-equivalent startup:
+- Fixed the crashed real-time WebSocket command handler and restored COM10.
+- Corrected G92 X0/Y0 bed-frame validation for the physical 0..96 mm bed.
+- Generated files now declare G90/G21/G94; the current engtestS0.nc dry-run
+  file was updated and passed syntax, routine, and machine-envelope checks.
+- Final check found COM10 physically unavailable; execution must wait until the
+  controller is connected and OLOS reports a live serial connection.
+June 15, 2026 - Hybrid zone scan modes:
+- Added independent "Engrave First Layers" and "Engrave Intermediate Layers"
+  toggles to Prusa settings.
+- Renamed the global selector to "Remaining Layers Mode", enabling engraved
+  adhesion/transition layers followed by vectored model layers.
+- Added per-layer scan-mode routing, saved-profile/API support, relevant
+  engraving controls, lead-distance reporting, and auditable G-code comments.
+- Python checks and the production frontend build passed; no machine commands
+  or server processes were started.
+June 15, 2026 - Engraved shell and grid core:
+- Engraved layers now raster only a configurable contour shell instead of the
+  complete cross-section.
+- "Grid-Fill Engraved Contour Interior" fills the remaining ordinary interior
+  core, not only enclosed holes.
+- Added adjustable shell width and retained grid spacing, thickness, angle,
+  crossing clearance, and positive/negative contour overlap behavior.
+- Geometry tests, Python compilation, and the frontend build passed; no machine
+  commands or server processes were started.
+June 15, 2026 - Engraving raster direction:
+- Added X Direction and Y Direction selection for engraved layers.
+- X produces horizontal rows; Y produces vertical columns.
+- Both retain shell/core geometry, grid clipping, alternating scan order, and
+  lead-in/out compensation.
+- Python tests and the frontend build passed; no server or machine was started.
+June 15, 2026 - Zone engraving infill menus:
+- Added an Engraving Infill submenu inside engraved first and intermediate
+  layer zones.
+- Both menus edit the same grid settings used by remaining layers, including
+  one shared custom crossing-clearance value.
+- Frontend build passed; no server or machine was started.
+
+June 15, 2026 - Vector/engraved wall matching:
+- Added a measured vector-track-width input and live calculated vector wall
+  thickness.
+- Engraved contour shells can automatically match the vector contour bundle
+  using (line count - 1) x 0.2 mm + measured track width.
+- Matching is off by default to preserve existing jobs.
+- API, saved settings, G-code generation, and G-code audit comments were
+  updated; Python checks and the frontend build passed.

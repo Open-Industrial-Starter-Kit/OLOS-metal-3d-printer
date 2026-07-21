@@ -38,10 +38,7 @@ import { storeToRefs } from 'pinia';
 import { useJobsFilesManagementStore } from 'src/stores/jobs-files-management';
 import { useMachineStatusStore } from 'src/stores/machine-status';
 import { Constants } from 'src/constants';
-import {
-  executeNormalGCommands,
-  executeRealTimeGCommands,
-} from 'src/services/execute.commands.service';
+import { executeRealTimeGCommands } from 'src/services/execute.commands.service';
 import { onMounted, ref, watch } from 'vue';
 import { useOverrideSettingsStore } from 'src/stores/override-settings';
 import { useJobInfoStore } from 'src/stores/job-info';
@@ -50,7 +47,6 @@ import { Config } from 'src/interfaces/configSettings.interface';
 import { configurationSettings } from 'src/services/configuration.loader.service';
 import { showNotifyMessage } from 'src/services/notify.messages.service';
 import { useGcodePreviewStore } from 'src/stores/gcode-preview';
-import { Gcode2DPreviewer } from 'src/services/gcode.previewer.service/gcode.2D.previewer.service';
 
 // Access Pinia stores for application state management.
 const jobManagerStore = useJobsFilesManagementStore();
@@ -64,7 +60,8 @@ const gcodePreviewStore = useGcodePreviewStore();
  */
 const { isFileOpen, isFileExecuting, isFileLoading } =
   storeToRefs(jobManagerStore);
-const { machineState, machinePosition } = storeToRefs(machineStatusStore);
+const { machineState } = storeToRefs(machineStatusStore);
+const { hasExecutionError } = storeToRefs(jobInfoStore);
 const { gcodePreviewerInstance } = storeToRefs(gcodePreviewStore);
 
 // Initialize notification service and config.
@@ -78,6 +75,12 @@ const config = ref<Config | null>(null);
  * @returns {{ icon: string, disabled: boolean }} The status object.
  */
 const getStartButtonStatus = () => {
+  if (hasExecutionError.value) {
+    return {
+      icon: 'error',
+      disabled: true,
+    };
+  }
   if (machineState.value === Constants.IDLE) {
     if (isFileOpen.value) {
       return {
@@ -93,17 +96,17 @@ const getStartButtonStatus = () => {
   } else if (machineState.value === Constants.RUN) {
     return {
       icon: 'pause',
-      disabled: false,
+      disabled: !isFileExecuting.value,
     };
   } else if (machineState.value === Constants.HOLD) {
     return {
-      icon: 'mdi-play-pause',
-      disabled: false,
+      icon: 'play_arrow',
+      disabled: !isFileExecuting.value,
     };
   } else if (machineState.value === Constants.DOOR) {
     return {
-      icon: 'mdi-play-pause',
-      disabled: false,
+      icon: 'play_arrow',
+      disabled: !isFileExecuting.value,
     };
   } else {
     return {
@@ -121,8 +124,20 @@ const startButtonStatus = ref(getStartButtonStatus());
 /**
  * A watcher that updates the start button's status whenever the machine state or file open status changes.
  */
-watch([machineState, isFileOpen], () => {
+watch([machineState, isFileOpen, isFileExecuting, hasExecutionError], () => {
   startButtonStatus.value = getStartButtonStatus();
+});
+
+/**
+ * Shows an error notification when GRBL rejects a command during execution.
+ * The Play button changes to an error icon, but without this watcher the user
+ * would have no visible indication of what was rejected.
+ */
+watch(hasExecutionError, (newValue, oldValue) => {
+  if (newValue && !oldValue) {
+    const cmd = jobInfoStore.currentCommand;
+    notifyMessage.error(cmd ? `Machine error: ${cmd}` : 'Machine rejected a command');
+  }
 });
 
 /**
@@ -130,9 +145,11 @@ watch([machineState, isFileOpen], () => {
  * @returns {boolean} `true` if the button should be disabled, `false` otherwise.
  */
 const isStopBtnDisabled = (): boolean => {
+  if (isFileExecuting.value) {
+    return false;
+  }
   return (
     machineState.value === Constants.IDLE ||
-    machineState.value === Constants.ALARM ||
     machineState.value === Constants.DISCONNECTED
   );
 };
@@ -143,28 +160,43 @@ const isStopBtnDisabled = (): boolean => {
 const stopProcess = () => {
   executeRealTimeGCommands(Constants.GRBL_COMMAND_STOP);
   isFileExecuting.value = false;
+  jobInfoStore.markExecutionStopped();
 };
 
 /**
  * Handles the logic for starting, pausing, or resuming a job based on the machine's state.
  *
- * - If `IDLE`, it starts a new job, resets overrides, and checks for job preview coordinates.
+ * - If `IDLE`, it starts a new job and resets overrides.
  * - If `HOLD` or `DOOR`, it resumes the job.
  * - If `RUN`, it pauses the job.
  */
 const startProcess = () => {
-  isFileExecuting.value = true;
-  if (machineState.value === Constants.IDLE) {
+  // A rejected G-code line can leave GRBL reporting Idle while the backend
+  // stream is paused. In that state Play must continue the existing stream,
+  // not call Start again and rewind the file.
+  if (
+    isFileExecuting.value &&
+    (machineState.value === Constants.IDLE ||
+      machineState.value === Constants.HOLD ||
+      machineState.value === Constants.DOOR)
+  ) {
+    executeRealTimeGCommands(Constants.GRBL_COMMAND_RESUME);
+  } else if (
+    isFileExecuting.value &&
+    machineState.value === Constants.RUN
+  ) {
+    executeRealTimeGCommands(Constants.GRBL_COMMAND_PAUSE);
+  } else if (machineState.value === Constants.IDLE) {
+    isFileExecuting.value = true;
     overrideSettingsStore.defaultFeedRate();
     jobManagerStore
       .startFileExecution()
       .then(() => {
         gcodePreviewerInstance.value?.removeExecutionLayer();
+        jobInfoStore.restJobProgress();
         if (
           config.value?.machine_type === Constants.MACHINE_TYPE.LASER_CUTTER
         ) {
-          checkJobPreviewCoordinates();
-          jobInfoStore.restJobProgress();
           overrideSettingsStore.defaultToolPower();
         } else if (
           config.value?.machine_type === Constants.MACHINE_TYPE.VINYL_CUTTER
@@ -175,52 +207,10 @@ const startProcess = () => {
         }
       })
       .catch((error) => {
+        isFileExecuting.value = false;
         notifyMessage.error(error.message);
       });
-  } else if (
-    machineState.value === Constants.HOLD ||
-    machineState.value === Constants.DOOR
-  ) {
-    executeRealTimeGCommands(Constants.GRBL_COMMAND_RESUME);
-  } else if (machineState.value === Constants.RUN) {
-    executeRealTimeGCommands(Constants.GRBL_COMMAND_PAUSE);
   }
-};
-
-/**
- * Checks if the machine's current position matches the G-code job's starting coordinates.
- * If not, it moves the machine to the correct starting position.
- */
-const checkJobPreviewCoordinates = () => {
-  if (
-    gcodePreviewerInstance.value instanceof Gcode2DPreviewer &&
-    (machinePosition.value.x !==
-      gcodePreviewerInstance.value.xJobStartingValue ||
-      machinePosition.value.y !==
-        gcodePreviewerInstance.value.yJobStartingValue)
-  ) {
-    moveMachineToJobPreviewCoordinate(
-      gcodePreviewerInstance.value.xJobStartingValue,
-      gcodePreviewerInstance.value.yJobStartingValue
-    );
-  }
-};
-
-/**
- * Sends G-code commands to move the machine to the specified coordinates relative to the current position.
- * @param {number} x - The target X coordinate.
- * @param {number} y - The target Y coordinate.
- */
-const moveMachineToJobPreviewCoordinate = (x: number, y: number) => {
-  executeNormalGCommands(Constants.GRBL_COMMAND_RESET_ZERO_XYZ);
-  executeNormalGCommands(
-    'G92' +
-      'X' +
-      (machinePosition.value.x - x).toFixed(2) +
-      'Y' +
-      (machinePosition.value.y - y).toFixed(2)
-  );
-  machineStatusStore.resetXYZJobPosition();
 };
 
 /**

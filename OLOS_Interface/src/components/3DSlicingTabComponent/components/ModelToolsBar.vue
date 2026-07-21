@@ -721,6 +721,7 @@ const updateSelectedModelAfterTransform = () => {
   slicingStore.checkIfModelBelowPlatform();
   slicingStore.addNewTransformCommand();
   selectedModel.value.helperBox?.update();
+  slicingStore.refreshPrintHeightRange();
 };
 
 /** Shows confirmation dialog before deleting the selected model */

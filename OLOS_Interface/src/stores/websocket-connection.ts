@@ -10,6 +10,9 @@ import { useMachineStatusStore } from 'src/stores/machine-status';
 import { useMessageOutputStore } from 'src/stores/message-output';
 import { useUSBMonitorStore } from 'src/stores/usb-monitor';
 import { useSliceInfoStore } from 'src/stores/slice-info';
+import { configurationSettings } from 'src/services/configuration.loader.service';
+
+const config = await configurationSettings();
 
 /**
  * Pinia store responsible for managing the WebSocket connection and routing
@@ -110,25 +113,47 @@ export const useWebSocketStore = defineStore('websocket', {
                 Constants.CONNECTING
               );
             } else {
+              this.jobManagerStore.isFileExecuting = false;
+              this.jobInfoStore.markExecutionStopped();
               this.messagesOutputStore.updateMessageBasedOnStatus(
-                Constants.DISCONNECTED
+                Constants.DISCONNECTED,
+                config.controller_required !== false
               );
             }
             break;
 
           case Constants.JOB_EXECUTION_DATA_TYPE:
-            this.jobInfoStore.updateJobProgress(
+            this.jobInfoStore.updateExecutionCommand(
+              res.text,
               res.line_index,
-              res.total_lines
+              res.total_lines,
+              res.execution_state || 'acknowledged'
             );
-            this.jobInfoStore.updateJobTimer(res.file_timer);
-            this.consoleOutputStore.addText(res);
-            await this.gcodePreviewStore.drawExecutedGcodeLine();
+            if (res.execution_state !== 'sent') {
+              this.jobInfoStore.updateJobProgress(
+                res.line_index,
+                res.total_lines
+              );
+              if (res.line_index >= res.total_lines) {
+                this.jobManagerStore.isFileExecuting = false;
+              }
+              this.jobInfoStore.updateJobTimer(res.file_timer);
+              this.consoleOutputStore.addText(res);
+            }
+            if (
+              res.execution_state === 'acknowledged' &&
+              this.gcodePreviewStore.isDrawableMotionCommand(res.text)
+            ) {
+              await this.gcodePreviewStore.drawExecutedGcodeLine();
+            }
             break;
 
           case Constants.SERIAL_COMMAND_DATA_TYPE:
             this.consoleOutputStore.addText(res);
             this.messagesOutputStore.checkReceivedMessage(res.text);
+            if (/^error:/i.test(res.text.trim())) {
+              this.jobInfoStore.markExecutionError(res.text);
+            }
             break;
 
           case Constants.NORMAL_COMMAND_DATA_TYPE:

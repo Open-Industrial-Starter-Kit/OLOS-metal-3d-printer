@@ -9,6 +9,7 @@ Functions:
 """
 
 import multiprocessing
+import math
 import re
 from core.constants import CoreConstants as constants
 
@@ -173,10 +174,20 @@ class JobsManagerHelper:
         opened_file = self._jobs_manager.get_open_filename()
         # make sure the file is open
         if opened_file is not None:
+            if not machine_connector.machine_connector_data.is_serial_connected:
+                raise RuntimeError(
+                    "Cannot start job: the machine controller is not connected "
+                    "to the configured serial port.")
+
             # reopen in case of restarting the file again
             self._jobs_manager.open_file(opened_file)
+            file_content = self._jobs_manager.get_opened_file_content()
+            self._validate_prusa_job_bounds(file_content)
 
-            # when start executing file reset the counter
+            # Clear stale GRBL error/pause flags, then reset the pending-ack counter.
+            # reset_counter() alone does not touch has_command_error or is_machine_pause,
+            # so a previous error would leave is_machine_ready() always False.
+            machine_connector.clear_error_state()
             machine_connector.reset_counter()
 
             # reset the job execution timer and start new one
@@ -184,15 +195,15 @@ class JobsManagerHelper:
             job_execution_timer.start()
 
             material_name, material_image, material_thickness = self._get_opened_file_material_settings()
-            file_content = self._jobs_manager.get_opened_file_content()
-
             # get opened file
             response = self.fastapi_jobs_manager_response(
                 type=constants.JOBS_MANAGER_DATA_TYPE,
                 process=constants.START_JOB_PROCESS,
                 file_data={
                     'fileName': opened_file,
-                    'fileContent': file_content,
+                    # The backend streams from the already-open file. Returning
+                    # multi-megabyte G-code here makes Play fragile and slow.
+                    'fileContent': '',
                     'materialName': material_name,
                     'materialImage': material_image,
                     'materialThickness': material_thickness
@@ -219,6 +230,109 @@ class JobsManagerHelper:
             )
 
         return response
+
+    @staticmethod
+    def _validate_prusa_job_bounds(file_content, bed_diameter=96.0):
+        """
+        Reject Prusa jobs whose work-coordinate moves leave the circular bed.
+
+        The proven OLSK routine moves to the lower-left reference of the
+        96 x 96 mm bed and assigns that point with G92 (normally X0 Y0).
+        Work coordinates are converted back to that physical 0..96 frame.
+        Every XY travel must remain inside the square machine envelope, while
+        laser-on moves must also remain inside the circular build surface.
+        """
+        prusa_markers = (
+            ";ENCLOSED HOLLOW INFILL:",
+            ";SCAN MODE:",
+            ";ROUTINE BEGIN",
+        )
+        if not any(marker in file_content for marker in prusa_markers):
+            return
+
+        coordinate_pattern = re.compile(
+            r"([XY])([-+]?(?:\d+(?:\.\d*)?|\.\d+))",
+            re.IGNORECASE,
+        )
+        origin_x = None
+        origin_y = None
+        current_x = None
+        current_y = None
+        laser_enabled = False
+        laser_power = 0.0
+        radius = float(bed_diameter) / 2.0
+        diameter = float(bed_diameter)
+        tolerance = 0.05
+
+        for line_number, raw_line in enumerate(file_content.splitlines(), 1):
+            code = raw_line.split(";", 1)[0].strip()
+            if not code:
+                continue
+            compact = re.sub(r"\s+", "", code).upper()
+
+            coordinates = {
+                axis.upper(): float(value)
+                for axis, value in coordinate_pattern.findall(compact)
+            }
+            power_match = re.search(
+                r"S([-+]?(?:\d+(?:\.\d*)?|\.\d+))",
+                compact,
+            )
+            if power_match:
+                laser_power = float(power_match.group(1))
+
+            if re.search(r"(?:^|[^A-Z])M[34](?=[A-Z]|$)", compact):
+                laser_enabled = True
+            if re.search(r"(?:^|[^A-Z])M5(?=[A-Z]|$)", compact):
+                laser_enabled = False
+
+            if compact.startswith("G92"):
+                if "X" in coordinates:
+                    origin_x = coordinates["X"]
+                    current_x = origin_x
+                if "Y" in coordinates:
+                    origin_y = coordinates["Y"]
+                    current_y = origin_y
+                continue
+
+            if compact.startswith("G53"):
+                continue
+            if not re.match(r"^G0?[01](?=[A-Z]|$)", compact):
+                continue
+            if origin_x is None or origin_y is None:
+                continue
+            if "X" in coordinates:
+                current_x = coordinates["X"]
+            if "Y" in coordinates:
+                current_y = coordinates["Y"]
+            if current_x is None or current_y is None:
+                continue
+
+            physical_x = current_x - origin_x
+            physical_y = current_y - origin_y
+            if (
+                physical_x < -tolerance
+                or physical_x > diameter + tolerance
+                or physical_y < -tolerance
+                or physical_y > diameter + tolerance
+            ):
+                raise ValueError(
+                    "Unsafe Prusa job blocked before execution: XY move at "
+                    f"line {line_number} maps to physical "
+                    f"X{physical_x:.3f} Y{physical_y:.3f}, outside the "
+                    f"0..{diameter:.3f} mm machine envelope.")
+
+            if laser_enabled and laser_power > 0:
+                distance = math.hypot(
+                    physical_x - radius,
+                    physical_y - radius,
+                )
+                if distance > radius + tolerance:
+                    raise ValueError(
+                        "Unsafe Prusa exposure blocked before execution: "
+                        f"laser-on move at line {line_number} is "
+                        f"{distance:.3f} mm from the bed center, outside the "
+                        f"{radius:.3f} mm build radius.")
 
     def handle_delete_file(self, filename):
         """
@@ -326,6 +440,40 @@ class JobsManagerHelper:
                 'materialName': '-',
                 'materialImage': '',
                 'materialThickness': '-'
+            },
+            files_list=self._jobs_manager.get_files_list(),
+            success=True,
+        )
+
+        return response
+
+    def handle_save_file(self, filename, file_content):
+        """
+        Saves edited G-code content to an existing job file and refreshes open-file state.
+
+        Args:
+            filename (str): Name of the file to save.
+            file_content (str): Edited G-code content.
+
+        Returns:
+            dict: A response including the saved file content and updated file list.
+        """
+
+        self._jobs_manager.write_gcode_file(filename, file_content)
+        self._jobs_manager.open_file(filename)
+
+        material_name, material_image, material_thickness = self._get_opened_file_material_settings()
+        saved_content = self._jobs_manager.get_opened_file_content()
+
+        response = self.fastapi_jobs_manager_response(
+            type=constants.JOBS_MANAGER_DATA_TYPE,
+            process=constants.SAVE_JOB_PROCESS,
+            file_data={
+                'fileName': filename,
+                'fileContent': saved_content if saved_content else '',
+                'materialName': material_name if material_name else '-',
+                'materialImage': material_image if material_image else '',
+                'materialThickness': material_thickness if material_thickness else '-'
             },
             files_list=self._jobs_manager.get_files_list(),
             success=True,

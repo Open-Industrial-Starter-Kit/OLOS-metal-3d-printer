@@ -4,6 +4,7 @@
     <model-tools-bar key="modelToolsBar" />
     <slicing-container key="slicingContainer" />
     <uploaded-objects-list key="uploadedObjectsList" />
+    <print-height-control key="printHeightControl" />
     <outside-platform-error-box
       v-if="isModelOutsidePlatform"
       key="outsidePlatformErrorBox"
@@ -24,6 +25,7 @@ import UploadedObjectsList from 'src/components/3DSlicingTabComponent/components
 import SliceModelsBox from 'src/components/3DSlicingTabComponent/components/SliceModelsBox.vue';
 import OutsidePlatformErrorBox from 'src/components/3DSlicingTabComponent/components/OutsidePlatformErrorBox.vue';
 import ResetCameraButton from 'src/components/3DSlicingTabComponent/components/ResetCameraButton.vue';
+import PrintHeightControl from 'src/components/3DSlicingTabComponent/components/PrintHeightControl.vue';
 import { use3DSlicingStore } from 'src/stores/3d-slicing';
 import { onUnmounted } from 'vue';
 import { useSliceInfoStore } from 'src/stores/slice-info';

@@ -125,6 +125,8 @@ class ServerCore:
 
         self._job_execution_timer = JobExecutionTimer()
         self._is_job_execute_process = False
+        self._pending_job_line = None
+        self._pending_job_line_index = 0
 
     def start(self):
         """
@@ -334,11 +336,11 @@ class ServerCore:
         """
 
         if enabled:
-            self._machine_connector.add_to_serial_write_queue(constants.REAL_TIME_COMMANDS,
+            self._machine_connector.add_to_serial_write_queue(constants.NORMAL_COMMAND_DATA_TYPE,
                                                               constants.HIGH_PRIORITY_COMMAND,
                                                               constants.PICO_ENABLE_STATUS)
         else:
-            self._machine_connector.add_to_serial_write_queue(constants.REAL_TIME_COMMANDS,
+            self._machine_connector.add_to_serial_write_queue(constants.NORMAL_COMMAND_DATA_TYPE,
                                                               constants.HIGH_PRIORITY_COMMAND,
                                                               constants.PICO_DISABLE_STATUS)
 
@@ -365,6 +367,22 @@ class ServerCore:
 
         # handle data send to serial
         command = data.get("command")
+
+        # Match a dedicated G-code sender such as UGS: once a file stream has
+        # started, its commands own the normal serial queue. Allow only GRBL
+        # real-time controls (pause, resume, stop and status) until the stream
+        # finishes. This prevents jog, G92, camera positioning, or console
+        # commands from jumping ahead of file lines via queue priority.
+        if (
+            self._is_job_execute_process
+            and type != constants.REAL_TIME_COMMAND_DATA_TYPE
+        ):
+            print(
+                "Ignored non-real-time UI command during job execution:",
+                command,
+            )
+            return
+
         if constants.REAL_TIME_COMMAND_DATA_TYPE == type:
             self._handle_real_time_commands(command)
         elif constants.NORMAL_COMMAND_DATA_TYPE == type:
@@ -399,7 +417,7 @@ class ServerCore:
             self._job_execution_timer.resume()
 
         else:
-            self._machine_connector.add_to_serial_write_queue(constants.REAL_TIME_COMMANDS,
+            self._machine_connector.add_to_serial_write_queue(constants.REAL_TIME_COMMAND_DATA_TYPE,
                                                               constants.HIGH_PRIORITY_COMMAND,
                                                               command)
 
@@ -456,7 +474,7 @@ class ServerCore:
             command (str): The GRBL command string.
         """
 
-        if command == constants.REAL_TIME_COMMANDS:
+        if command in constants.REAL_TIME_COMMANDS:
             self._handle_real_time_commands(command)
         # rest of commands
         # add them to serial write and websocket queues
@@ -547,8 +565,11 @@ class ServerCore:
             elif constants.START_JOB_PROCESS == process:
                 response = self._jobs_manager_helper.handle_start_file(
                     self._machine_connector, self._job_execution_timer)
-                # change the flags to true while executing a file
-                self._set_job_execution_flags()
+                # Only stream the file after all start-time safety checks pass.
+                if response.get("data", {}).get("success", False):
+                    self._set_job_execution_flags()
+                else:
+                    self._reset_job_execution_flags()
                 is_distributed_info = True
 
                 self._fastapi_server_shared_data.fastapi_write_queue.put(
@@ -562,6 +583,18 @@ class ServerCore:
 
                 response = self._jobs_manager_helper.handle_rename_file(
                     old_filename, new_filename)
+
+                self._fastapi_server_shared_data.fastapi_write_queue.put(
+                    response)
+
+            # handle saving edited file
+            elif constants.SAVE_JOB_PROCESS == process:
+                filename = data.get("filename")
+                file_content = data.get("file_content")
+                is_distributed_info = True
+
+                response = self._jobs_manager_helper.handle_save_file(
+                    filename, file_content)
 
                 self._fastapi_server_shared_data.fastapi_write_queue.put(
                     response)
@@ -631,8 +664,11 @@ class ServerCore:
         except Exception as error:
             print("FastAPI Jobs Manager Response Error: ", error)
             process = data.get("process")
-            response = self._jobs_manager_helper.handle_error_requests(
-                process)
+            response = self._jobs_manager_helper.handle_error_requests(process)
+            # Embed the actual error so the API layer can forward it to the user
+            # instead of the generic fallback string.
+            if isinstance(response, dict) and 'data' in response:
+                response['data']['errorDetail'] = str(error)
             self._fastapi_server_shared_data.fastapi_write_queue.put(response)
 
         finally:
@@ -644,6 +680,16 @@ class ServerCore:
         """
         Executes one line of G-code at a time when job execution is active.
         """
+        if (
+            self._is_job_execute_process
+            and not self._machine_connector_shared_data.is_serial_connected
+        ):
+            print(
+                "Job execution stopped: serial controller connection was lost.")
+            self._reset_job_execution_flags()
+            self._machine_connector.reset_counter()
+            self._job_execution_timer.stop()
+            return
 
         '''
         incase the user is starting a file, execute a single line in every loop
@@ -659,10 +705,32 @@ class ServerCore:
 
     def _execute_line(self):
         """
-        Sends the next line of G-code to the machine, updates progress, and sends status to UI.
+        Confirms the previous line after GRBL acknowledgement, then sends the
+        next line. This keeps UI progress tied to controller acceptance rather
+        than merely adding commands to the serial queue.
         """
-        # get the next command in the file
+        if self._pending_job_line is not None:
+            self._send_job_execution_update(
+                self._pending_job_line,
+                self._pending_job_line_index,
+                "acknowledged",
+            )
+            self._pending_job_line = None
+            self._pending_job_line_index = 0
+
         line = self._jobs_manager.get_next_line()
+
+        # Comments and blank lines are useful in saved files and the console,
+        # but must not consume controller acknowledgements or planner traffic.
+        while line is not None and (
+            not line.strip() or line.lstrip().startswith(";")
+        ):
+            self._send_job_execution_update(
+                line,
+                self._jobs_manager.get_line_index(),
+                "skipped",
+            )
+            line = self._jobs_manager.get_next_line()
 
         # The system did not finish executing the file
         if line is not None:
@@ -673,16 +741,13 @@ class ServerCore:
                                          constants.LOW_PRIORITY_COMMAND,
                                          line)
 
-            # Add the command that is sent to machine to websocket, so that it will be shown to user being executed
-            line_index = self._jobs_manager.get_line_index()
-            total_lines = self._jobs_manager.get_total_lines()
-            file_timer = self._job_execution_timer.get_elapsed_time()
-            res = WebsocketJsonData.parse_job_execution_command_to_json(
-                line, line_index, total_lines, file_timer)
-
-            self._send_to_interface_via_websocket(constants.JOB_EXECUTION_DATA_TYPE,
-                                                  constants.MIDDLE_PRIORITY_COMMAND,
-                                                  res)
+            self._pending_job_line = line
+            self._pending_job_line_index = self._jobs_manager.get_line_index()
+            self._send_job_execution_update(
+                line,
+                self._pending_job_line_index,
+                "sent",
+            )
 
         # no remaining lines
         else:
@@ -690,6 +755,26 @@ class ServerCore:
             self._reset_job_execution_flags()
             self._machine_connector.reset_counter()
             self._job_execution_timer.stop()
+
+    def _send_job_execution_update(
+        self, line, line_index=None, execution_state="acknowledged"
+    ):
+        """Send one file-line progress update to the interface."""
+        if line_index is None:
+            line_index = self._jobs_manager.get_line_index()
+        total_lines = self._jobs_manager.get_total_lines()
+        file_timer = self._job_execution_timer.get_elapsed_time()
+        res = WebsocketJsonData.parse_job_execution_command_to_json(
+            line,
+            line_index,
+            total_lines,
+            file_timer,
+            execution_state,
+        )
+        self._send_to_interface_via_websocket(
+            constants.JOB_EXECUTION_DATA_TYPE,
+            constants.MIDDLE_PRIORITY_COMMAND,
+            res)
 
     def _handle_media_management_requests(self, data):
         """
@@ -961,7 +1046,7 @@ class ServerCore:
             print("FastAPI Slice Response Error: ", error)
             process = data.get("process")
             response = self._slicing_helper.handle_error_requests(
-                process)
+                process, error)
             self._fastapi_server_shared_data.fastapi_write_queue.put(response)
 
     def _distribute_job_manager_message_to_all_clients(self):
@@ -1076,6 +1161,9 @@ class ServerCore:
         """
 
         self._is_job_execute_process = True
+        self._pending_job_line = None
+        self._pending_job_line_index = 0
+        self._machine_connector_shared_data.has_command_error = False
         self._machine_connector_shared_data.is_job_execute_process = True
         self._websocket_connector_shared_data.is_job_execute_process = True
 
@@ -1085,5 +1173,7 @@ class ServerCore:
         """
 
         self._is_job_execute_process = False
+        self._pending_job_line = None
+        self._pending_job_line_index = 0
         self._machine_connector_shared_data.is_job_execute_process = False
         self._websocket_connector_shared_data.is_job_execute_process = False

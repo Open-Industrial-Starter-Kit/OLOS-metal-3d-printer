@@ -3,6 +3,13 @@ import { Constants } from 'src/constants';
 import { configurationSettings } from 'src/services/configuration.loader.service';
 import { executeNormalGCommands } from 'src/services/execute.commands.service';
 
+interface PowderRoutineSettings {
+  reservoirLift: number;
+  recoaterOut: number;
+  recoaterHome: number;
+  recoaterFeed: number;
+}
+
 /**
  * Pinia store managing jog control states and actions for machine movement.
  */
@@ -81,6 +88,56 @@ export const useJogControlsStore = defineStore('jogControls', {
 
       // Return to absolute positioning mode
       executeNormalGCommands(Constants.GRBL_COMMAND_ABSOLUTE_POSITION);
+    },
+
+    /**
+     * Moves one auxiliary machine axis in relative mode.
+     * The speed is supplied directly in mm/min to match the machine routine.
+     */
+    auxiliaryAxisJog(axis: 'A' | 'B', distance: number, speed: number) {
+      if (!Number.isFinite(distance) || !Number.isFinite(speed) || speed <= 0) {
+        return;
+      }
+
+      executeNormalGCommands(Constants.GRBL_COMMAND_RELATIVE_POSITION);
+      executeNormalGCommands(`G1 ${axis}${distance} F${speed}`);
+      executeNormalGCommands(Constants.GRBL_COMMAND_ABSOLUTE_POSITION);
+    },
+
+    /**
+     * Runs the metal-printer powder-feed and recoater routine used by the
+     * slicer. A positive reservoir lift is converted to the machine's
+     * negative A-axis direction.
+     */
+    runPowderRoutine(settings: PowderRoutineSettings) {
+      if (
+        !Number.isFinite(settings.reservoirLift) ||
+        settings.reservoirLift <= 0 ||
+        !Number.isFinite(settings.recoaterOut) ||
+        !Number.isFinite(settings.recoaterHome) ||
+        !Number.isFinite(settings.recoaterFeed) ||
+        settings.recoaterFeed <= 0
+      ) {
+        return;
+      }
+
+      const commands = [
+        'S0',
+        'M5',
+        'G92 A0',
+        'G92 Z0',
+        'G1 F10000 S0',
+        'G53 X-395.5 Y-4.5 S0',
+        `G1 A-${settings.reservoirLift} F50`,
+        'G1 Z0.075 F50',
+        `G1 F${settings.recoaterFeed} S0`,
+        `G53 B${settings.recoaterOut} S0`,
+        `G53 B${settings.recoaterHome} S0`,
+        'G1 F10000 S0',
+        'M5',
+      ];
+
+      commands.forEach(executeNormalGCommands);
     },
 
     /**

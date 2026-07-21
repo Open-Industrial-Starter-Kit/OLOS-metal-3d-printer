@@ -69,13 +69,13 @@ export const useMessageOutputStore = defineStore('messagesOutput', {
      * Runs checks for machine state changes, errors, and connection status.
      * @param state - The new machine state string
      */
-    updateMessageBasedOnStatus(state: string) {
+    updateMessageBasedOnStatus(state: string, showDisconnectDialog = true) {
       if (state !== this.state) {
         this.state = state;
         this.checkMachineState();
       }
       this.checkForErrors();
-      this.checkMachineConnection();
+      this.checkMachineConnection(showDisconnectDialog);
     },
 
     /**
@@ -101,13 +101,13 @@ export const useMessageOutputStore = defineStore('messagesOutput', {
     /**
      * Checks if the machine is disconnected or connecting and updates messages and dialogs accordingly.
      */
-    checkMachineConnection() {
+    checkMachineConnection(showDisconnectDialog = true) {
       if (this.state === Constants.DISCONNECTED) {
         this.messageTitle = Constants.DISCONNECTED;
         this.smallMessage = Constants.SMALL_MESSAGES.DISCONNECTED_MESSAGE;
         this.messageBody = Constants.LONG_MESSAGES.DISCONNECTED_MESSAGE;
 
-        if (!this.isDisconnectDialogShown) {
+        if (showDisconnectDialog && !this.isDisconnectDialogShown) {
           this.showDialog(Constants.DISCONNECTED);
         }
       } else if (this.state === Constants.CONNECTING) {

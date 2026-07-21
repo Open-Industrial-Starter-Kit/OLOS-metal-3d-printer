@@ -48,8 +48,19 @@ export const parserState: GCodeState = {
  * @returns {Line[]} An array of `Line` objects representing the G-code movements.
  */
 export const convertGCodeToLines = (gcodeStr: string) => {
+  // Strip G53 (machine-coordinate) moves before parsing — they reference
+  // absolute machine positions (e.g. X-238.5 Y-158 for bed homing) that are
+  // far outside work-coordinate bounds, causing a false "bigger than platform"
+  // error that terminates the preview worker on the first batch.
+  const sanitized = gcodeStr
+    .split('\n')
+    .map((line) => {
+      return /\bG53\b/i.test(line.split(';')[0]) ? '' : line;
+    })
+    .join('\n');
+
   const gcode = gcodetogeometry.parse(
-    gcodeStr,
+    sanitized,
     parserState.settings,
     parserState.totalSize
   );
@@ -61,15 +72,12 @@ export const convertGCodeToLines = (gcodeStr: string) => {
   // update the parser state size
   parserState.totalSize = gcode.size;
   
-  console.log(`[convertGCodeToLines] Parsed ${gcode.lines.length} G-code lines`);
-  
   for (let i = 0; i < gcode.lines.length; i++) {
     const line = gcode.lines[i];
 
     if (['G0', 'G1', 'g0', 'g1'].includes(line.type)) {
       addStraightLine(linesToDraw, line);
       updateBoundsStringtLine(line);
-      console.log(`[convertGCodeToLines] ${line.type} from (${line.start.x},${line.start.y}) to (${line.end.x},${line.end.y})`);
     } else if (['G2', 'G3', 'g2', 'g3'].includes(line.type)) {
       addCurvedLine(linesToDraw, line);
       updateBoundsCurevedLine(line);
@@ -145,7 +153,8 @@ export const mapSpeedToOpacity = (speed: number) => {
 export const generateDrawingDataFromGcode = (
   linesToDraw: Line[],
   colors: GCodeColors | null = null,
-  is3DPreview = false
+  is3DPreview = false,
+  opacityScale = 1
 ) => {
   const geometry = new THREE.BufferGeometry();
   // Determine the fixed size of arrays
@@ -162,14 +171,19 @@ export const generateDrawingDataFromGcode = (
   let index = linesToDraw.length;
   while (index--) {
     const line = linesToDraw[index];
-    const opacity = line.speed ? mapSpeedToOpacity(line.speed) : 0;
-    // ignore lines without opacity
+    // S-value (line.speed) drives opacity for laser-power moves. Laser-off
+    // moves must stay invisible or dense startup/travel paths look like a
+    // filled red surface in the 3D slice preview.
+    const isLaserActive = line.speed > 0;
+    const opacity = isLaserActive
+      ? mapSpeedToOpacity(line.speed) * opacityScale
+      : 0;
     if (!opacity) continue;
 
-    // Set color to gray at the beginning
+    // Set color based on laser activity: S0 G1 moves use the travel (G0) color.
     color.setColorName('red');
 
-    if (line.type === 'G0') {
+    if (line.type === 'G0' || !isLaserActive) {
       if (colors) color.setColorName(colors.G0);
     } else if (line.type === 'G1') {
       if (colors) color.setColorName(colors.G1);
@@ -374,44 +388,45 @@ export const addExecutedLineToGraph = (
   jobLayer: JobLayerElements,
   color: string
 ) => {
-  if (jobLayer.group.children.length > 0) {
-    // Access the child based on the execution line index, which contains the correct lineSegments
-    if (
-      jobLayer.executedLineIndex / (6 * Constants.PREVIEWER_WORKER_BATCH_SIZE) >
-      1
-    ) {
-      jobLayer.lineSegmentsIndex += 1;
-      jobLayer.executedLineIndex = 0;
-    }
-
+  while (jobLayer.lineSegmentsIndex < jobLayer.group.children.length) {
     const lineSegments = jobLayer.group.children[
       jobLayer.lineSegmentsIndex
     ] as THREE.LineSegments;
 
     // Get the geometry of the lineSegments
     const geometry = lineSegments.geometry;
+    const colorsArray = geometry.attributes.color?.array;
 
-    if (geometry.attributes.color) {
-      const colorsArray = geometry.attributes.color.array;
-      const lineColor = new THREE.Color(color);
+    if (!colorsArray) return;
 
-      // Update the color for both vertices of the line
-      for (
-        let i = jobLayer.executedLineIndex;
-        i <= jobLayer.executedLineIndex + 5;
-        i += 3
-      ) {
-        colorsArray[i] = lineColor.r;
-        colorsArray[i + 1] = lineColor.g;
-        colorsArray[i + 2] = lineColor.b;
-      }
-
-      // Increment the executedLineIndex to process the next line
-      jobLayer.executedLineIndex += 6;
-
-      // Mark the color attribute for update
-      geometry.attributes.color.needsUpdate = true;
+    // Worker batches contain source lines, but only movement commands produce
+    // geometry. Advance using the real geometry length instead of assuming
+    // every source line created one rendered segment.
+    if (jobLayer.executedLineIndex + 5 >= colorsArray.length) {
+      jobLayer.lineSegmentsIndex += 1;
+      jobLayer.executedLineIndex = 0;
+      continue;
     }
+
+    const lineColor = new THREE.Color(color);
+
+    // Update the color for both vertices of the line
+    for (
+      let i = jobLayer.executedLineIndex;
+      i <= jobLayer.executedLineIndex + 5;
+      i += 3
+    ) {
+      colorsArray[i] = lineColor.r;
+      colorsArray[i + 1] = lineColor.g;
+      colorsArray[i + 2] = lineColor.b;
+    }
+
+    // Increment the executedLineIndex to process the next line
+    jobLayer.executedLineIndex += 6;
+
+    // Mark the color attribute for update
+    geometry.attributes.color.needsUpdate = true;
+    return;
   }
 };
 

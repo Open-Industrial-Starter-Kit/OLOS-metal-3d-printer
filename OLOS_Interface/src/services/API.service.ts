@@ -2,6 +2,7 @@ import { api } from 'src/boot/axios';
 import { Constants } from 'src/constants';
 import {
   SlicingData,
+  SlicerJobProject,
   SlicingSettings,
 } from 'src/interfaces/3D.slicing.interface';
 import {
@@ -40,7 +41,10 @@ const API = {
    */
   openFile: (filename: string) =>
     api.post<JobApiResponse>(
-      getUrl(Constants.API_URI.JOBS_MANAGER, `open/${filename}`)
+      getUrl(
+        Constants.API_URI.JOBS_MANAGER,
+        `open/${encodeURIComponent(filename)}`
+      )
     ),
 
   /**
@@ -50,7 +54,10 @@ const API = {
    */
   deleteFile: (filename: string) =>
     api.delete<JobApiResponse>(
-      getUrl(Constants.API_URI.JOBS_MANAGER, `delete/${filename}`)
+      getUrl(
+        Constants.API_URI.JOBS_MANAGER,
+        `delete/${encodeURIComponent(filename)}`
+      )
     ),
 
   /**
@@ -72,6 +79,23 @@ const API = {
   },
 
   /**
+   * @description Saves edited G-code content for a job file.
+   * @param {string} filename - Name of the file to save.
+   * @param {string} fileContent - Edited G-code content.
+   */
+  saveFile: (filename: string, fileContent: string) => {
+    const json_data = {
+      filename,
+      file_content: fileContent,
+    };
+    return api.put<JobApiResponse>(
+      getUrl(Constants.API_URI.JOBS_MANAGER, 'save'),
+      json_data,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  },
+
+  /**
    * @description Uploads a job file from USB storage to the server.
    * @param {string} filePath - Path of the file on the USB device.
    * @returns {Promise<import('axios').AxiosResponse<JobApiResponse>>}
@@ -82,6 +106,21 @@ const API = {
       getUrl(Constants.API_URI.JOBS_MANAGER, 'upload_usb_job_file'),
       json_data,
       { headers: { 'Content-Type': 'application/json' } }
+    );
+  },
+
+  /**
+   * @description Uploads a job file from the local PC to the server.
+   * @param {File} file - Local G-code job file.
+   * @returns {Promise<import('axios').AxiosResponse<JobApiResponse>>}
+   */
+  uploadJobFile: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<JobApiResponse>(
+      getUrl(Constants.API_URI.JOBS_MANAGER, 'upload'),
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
     );
   },
 
@@ -96,6 +135,26 @@ const API = {
   /** @description Checks if a job file is currently open on the server. */
   checkOpenFile: () =>
     api.get<JobApiResponse>(getUrl(Constants.API_URI.JOBS_MANAGER, 'check')),
+
+  /** Saves the model and slicer settings associated with a generated job. */
+  saveJobProject: (filename: string, project: SlicerJobProject) =>
+    api.post(
+      getUrl(
+        Constants.API_URI.JOBS_MANAGER,
+        `project/${encodeURIComponent(filename)}`
+      ),
+      project,
+      { headers: { 'Content-Type': 'application/json' } }
+    ),
+
+  /** Loads the model and slicer settings associated with a generated job. */
+  loadJobProject: (filename: string) =>
+    api.get<SlicerJobProject>(
+      getUrl(
+        Constants.API_URI.JOBS_MANAGER,
+        `project/${encodeURIComponent(filename)}`
+      )
+    ),
 
   /**
    * @description Generates a G-code file based on provided data.
@@ -117,7 +176,12 @@ const API = {
    * @param {string} filename - Name of the file to download.
    */
   downloadFile: (filename: string) =>
-    api.post(getUrl(Constants.API_URI.JOBS_MANAGER, `download/${filename}`)),
+    api.post(
+      getUrl(
+        Constants.API_URI.JOBS_MANAGER,
+        `download/${encodeURIComponent(filename)}`
+      )
+    ),
 
   // ---------------- Media Manager ----------------
 
@@ -264,7 +328,10 @@ const API = {
   /** @description Saves a slicing result to a file. */
   saveSlicingFile: (filename: string) =>
     api.post<SlicingApiResponse>(
-      getUrl(Constants.API_URI.SLICE, `save/${filename}`)
+      getUrl(
+        Constants.API_URI.SLICE,
+        `save/${encodeURIComponent(filename)}`
+      )
     ),
 
   /** @description Retrieves a preview of the slicing process. */
