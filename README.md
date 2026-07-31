@@ -31,12 +31,32 @@ powered print.
   controls.
 - Multi-stage variable-grid support below roof and deck regions while
   preserving normal infill outside those regions.
+- Solid-stack processing with line-filled layers, optional vector contours,
+  configurable line overlap, top and bottom closure layers, and independent
+  exposure controls.
+- Edge-interleaved, two-pass, normal line, and island scan strategies with
+  configurable direction, cross-hatching, layer rotation, island size, and
+  island sub-strategy.
+- Optional sacrificial anchor pads and multi-layer transition preparation for
+  solid and normal models. Transition material can extend into hollow regions
+  to support detected internal floors or flanges.
+- Synchronized multi-object slicing that processes layer `n` for every model
+  before advancing to layer `n + 1`, with independently stored print settings
+  for each selected object.
+- Optional recoater bed-drop and return motion with configurable Z distance
+  and feed rate.
 - Non-destructive print-height limiting and slab cropping without scaling or
   deforming the model.
-- Saved slicer projects that retain the transformed model and slicing settings,
-  with an **Open in Slicer** workflow from Jobs Manager.
+- Saved slicer projects that retain every transformed model, source filename,
+  global slicing settings, and per-object settings, with an **Open in Slicer**
+  workflow from Jobs Manager.
 - Layer-by-layer preview for contours, infill, engraving, skin, and variable
-  grid regions, plus machine-coordinate overlays.
+  grid regions, plus solid patterns, closure layers, anchor pads, transition
+  layers, transformed model positions, and machine-coordinate overlays.
+- Ordered plain-text print-setting reports that list active settings and
+  `ON`/`OFF` toggle states for the selected slicing workflow.
+- Automatically numbered duplicate model names, a filleted-box primitive, and
+  Job Manager sorting by newest date or by name.
 - Estimated motion and recoating time derived from generated G-code.
 - Acknowledgement-based execution progress, live command status, pause/resume,
   stop handling, and pre-run circular-bed boundary checks.
@@ -116,6 +136,10 @@ The development interface is available at `http://localhost:9000` by default.
   behavior on real hardware. Confirm that `M3`, `M5`, and travel commands behave
   safely with the connected laser controller before enabling power.
 - Keep physical emergency-stop access available during machine testing.
+
+Raw STL and G-code files do not contain OLOS project configuration. Save an
+`.olos-project.json` file, or load a job with an associated saved project, to
+restore model transforms and per-object print settings.
 
 ## Contributors
 
