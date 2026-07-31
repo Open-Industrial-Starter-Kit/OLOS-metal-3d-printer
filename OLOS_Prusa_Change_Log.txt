@@ -1439,6 +1439,14 @@ Files changed
      Machine sections.
    - Added a selected-object indicator and an explicit "Save Settings for
      Object" action.
+   - Added dense roof-style line filling for every solid model layer, with
+     independent power, feed rate, estimated track width, adjacent-line
+     overlap, X/Y/diagonal direction, and optional cross-hatching.
+   - Added optional first and intermediate solid zones. Each zone has its own
+     layer count, vector/engraving choice, power, feed rate, and engraved hatch
+     spacing.
+   - Added an optional vectored contour around the solid line pattern, with
+     independent power, feed rate, line count, and contour-to-pattern overlap.
    - Added sacrificial anchor-pad controls for layer count, square size, power,
      feed rate, line overlap, and optional rotation on each layer.
    - Added transition-layer controls for layer count, line/grid pattern,
@@ -1456,6 +1464,9 @@ Files changed
      power, feed rate, and line overlap.
    - Added optional recoater bed-drop and return controls with independent
      distance and feed rate.
+   - Kept layer height, Z speed, no-routine layer count, reservoir lift,
+     recoater feed rate, engraving acceleration, and bed offsets available in
+     the Solid Mode machine section.
 
 2. OLOS_Interface/src/stores/3d-slicing.ts
 3. OLOS_Interface/src/interfaces/3D.slicing.interface.ts
@@ -1482,7 +1493,8 @@ Files changed
    - Reports list the workflow settings and record toggle values as ON or OFF.
    - Added model-by-model settings metadata for multi-object jobs.
 
-8. OLOS_Interface/src/services/gcode.3D.previewer.service.ts
+8. OLOS_Interface/src/services/gcode.previewer.service/
+   gcode.3D.previewer.service.ts
 9. OLOS_Interface/src/workers/slice.previewer.worker.ts
 
    - Added preview support for solid patterns, contours, closure layers,
@@ -1494,7 +1506,7 @@ Files changed
 
 10. OLOS_Interface/src/components/3DSlicingTabComponent/components/
     MainToolsBar/components/components/UploadedObjectsList.vue
-11. OLOS_Interface/src/components/JobsManagerTabComponent/components/
+11. OLOS_Interface/src/components/JobsFilesManagementTabComponent/components/
     JobsFilesTable.vue
 
    - Added unique numbering for duplicate primitive/model names.

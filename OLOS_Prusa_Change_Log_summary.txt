@@ -148,6 +148,12 @@ June 15, 2026 - Vector/engraved wall matching:
 July 31, 2026 - Solid-stack, preparation, and multi-model workflows:
 - Added a dedicated Solid Mode while preserving normal Prusa slicing when the
   mode is off.
+- Solid layers use dense roof-style lines with configurable power, feed rate,
+  track width, line overlap, X/Y/diagonal direction, and cross-hatching.
+- Added optional first and intermediate solid zones with independent layer
+  counts, vector/engraving mode, power, feed rate, and engraving spacing.
+- Added an optional solid vector contour with independent power, feed rate,
+  line count, and overlap with the line pattern.
 - Added synchronized multi-object slicing so every model completes layer n
   before any model advances to layer n + 1.
 - Added independently saved settings for each selected object, model-specific
