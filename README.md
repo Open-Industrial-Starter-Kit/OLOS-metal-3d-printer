@@ -154,8 +154,7 @@ Original software development:
 
 Metal 3D printer workflow and slicer development:
 
-- [Dharunjay Tiwari (@Dharunjay)](https://github.com/Dharunjay) -
-  [dharunjay777@gmail.com](mailto:dharunjay777@gmail.com)
+- [Dharunjay Tiwari](https://www.linkedin.com/in/dharunjay-tiwari-30b7a9234/)
 
 The OLSK project is developed for the
 [dtec.bw Fab City project](https://dtecbw.de/home/forschung/hsu/projekt-fabcity)
@@ -165,6 +164,7 @@ at [Fab City Hamburg](https://www.fabcity.hamburg/en/).
 
 - [daniele@inmachines.net](mailto:daniele@inmachines.net)
 - [InMachines](https://www.inmachines.net/)
+- [Dharunjay](mailto:dharunjay14@gmail.com)
 
 ## License
 
