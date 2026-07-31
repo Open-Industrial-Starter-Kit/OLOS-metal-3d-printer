@@ -1415,3 +1415,130 @@ Validation
 - Both generated powered compensated segments successfully.
 - The Quasar production frontend build completed successfully.
 - No server process was started and no machine command was sent.
+
+
+JULY 31, 2026 - SOLID-STACK, PREPARATION, AND MULTI-MODEL WORKFLOWS
+===================================================================
+
+Purpose
+-------
+- Expanded the metal slicer from a single-model workflow into a configurable
+  multi-model build workflow.
+- Added dedicated solid-stack processing, reusable preparation layers, saved
+  per-object settings, and project/report persistence.
+- Kept the existing normal Prusa slicing behavior available when Solid Mode is
+  disabled.
+
+Files changed
+-------------
+1. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/components/PrintingConfigurations/components/
+   PrusaSettings.vue
+
+   - Organized Solid Mode controls into Preparation, Model Settings, and
+     Machine sections.
+   - Added a selected-object indicator and an explicit "Save Settings for
+     Object" action.
+   - Added sacrificial anchor-pad controls for layer count, square size, power,
+     feed rate, line overlap, and optional rotation on each layer.
+   - Added transition-layer controls for layer count, line/grid pattern,
+     direction, power, feed rate, track width, line overlap, hatch geometry,
+     grid clearance, optional contour, and per-layer rotation.
+   - Made anchor and transition preparation available to normal Prusa slicing.
+   - Added optional internal-flange support in normal mode. The transition
+     pattern can continue through enclosed hollow regions until a detected
+     internal floor or flange is reached.
+   - Added solid line-order strategies: normal order, edge interleave, and
+     two-pass scanning.
+   - Added island scanning with fitted island dimensions and selectable normal,
+     edge-interleave, or two-pass line order inside each island.
+   - Added top-and-bottom line-only closure layers with independent layer count,
+     power, feed rate, and line overlap.
+   - Added optional recoater bed-drop and return controls with independent
+     distance and feed rate.
+
+2. OLOS_Interface/src/stores/3d-slicing.ts
+3. OLOS_Interface/src/interfaces/3D.slicing.interface.ts
+4. OLOS_Interface/src/constants.ts
+
+   - Added complete default and typed state for anchor pads, transition layers,
+     closure layers, island scanning, line ordering, recoater bed return, and
+     synchronized solid-object slicing.
+   - Added per-object print-setting snapshots.
+   - Automatically saves the active object's settings when object selection
+     changes and restores the selected object's settings into the editor.
+   - Added synchronized layer handling so layer n is completed for every model
+     before the build advances to layer n + 1.
+
+5. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+   MainToolsBar/components/FileTools.vue
+6. OLOS_Interface/src/services/3d.slicer.service.ts
+7. OLOS_Interface/src/utils/print-settings-report.ts
+
+   - Extended slicer projects to retain every loaded model, transformed
+     position, source filename, global settings, and per-object settings.
+   - Added ordered plain-text print-settings reports named after the sliced
+     file.
+   - Reports list the workflow settings and record toggle values as ON or OFF.
+   - Added model-by-model settings metadata for multi-object jobs.
+
+8. OLOS_Interface/src/services/gcode.3D.previewer.service.ts
+9. OLOS_Interface/src/workers/slice.previewer.worker.ts
+
+   - Added preview support for solid patterns, contours, closure layers,
+     sacrificial anchor pads, and transition layers.
+   - Applied each model's current bed transform to generated and previewed
+     geometry.
+   - Kept multiple sliced objects visible together at their actual bed
+     positions.
+
+10. OLOS_Interface/src/components/3DSlicingTabComponent/components/
+    MainToolsBar/components/components/UploadedObjectsList.vue
+11. OLOS_Interface/src/components/JobsManagerTabComponent/components/
+    JobsFilesTable.vue
+
+   - Added unique numbering for duplicate primitive/model names.
+   - Added Jobs Manager sorting by newest date or by name.
+
+12. OLOS_Server/src/fastapi_server/models/slice_model.py
+13. OLOS_Server/src/fastapi_server/models/jobs_manager_model.py
+14. OLOS_Server/src/fastapi_server/services/slice_service.py
+15. OLOS_Server/src/utils/threeD_slice.py
+16. OLOS_Server/src/utils/threeD_slice_helper.py
+17. OLOS_Server/src/utils/threeD_printing_slice/threeD_slice.py
+18. OLOS_Server/src/utils/threeD_printing_slice/src/
+    slicers_shared_methods.py
+19. OLOS_Server/src/utils/threeD_printing_slice/src/prusa_slicer.py
+
+   - Added API validation and backend mapping for the new solid, preparation,
+     internal-flange, per-object, and recoater settings.
+   - Added multi-object layer merging while preserving independent settings for
+     each model.
+   - Added G-code comments that identify each model and the settings used for
+     it.
+   - Added engraved square anchor pads below each disconnected model.
+   - Added multi-layer line/grid transition generation, optional transition
+     contours, and pattern rotation.
+   - Added transition extension through enclosed hollows to detected internal
+     floor/flange regions when enabled in normal mode.
+   - Added solid top/bottom closure behavior, island scanning, edge-interleave,
+     two-pass, and normal line strategies.
+   - Added recoater sequencing that lowers the bed at right maximum and returns
+     it to the previous height while the recoater travels home.
+   - Fixed settings serialization and multiprocessing handoff issues that could
+     leave slicing stuck at zero percent.
+
+Additional model and documentation updates
+------------------------------------------
+- Added a rounded/filleted box primitive alongside the existing box primitive.
+- Updated the branch README with a concise metal-slicer feature overview,
+  setup notes, safety reminders, and project-persistence guidance.
+
+Documentation validation
+------------------------
+- Compared this entry against commit 26799a6, including frontend defaults,
+  TypeScript interfaces, FastAPI models, slicer generation, preview, and saved
+  project/report paths.
+- Compared the feature summary against the README update in commit 5a1cd08.
+- No machine command was sent and no server process was started while updating
+  these logs.

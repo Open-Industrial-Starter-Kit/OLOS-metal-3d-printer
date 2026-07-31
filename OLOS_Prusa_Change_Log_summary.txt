@@ -144,3 +144,29 @@ June 15, 2026 - Vector/engraved wall matching:
 - Matching is off by default to preserve existing jobs.
 - API, saved settings, G-code generation, and G-code audit comments were
   updated; Python checks and the frontend build passed.
+
+July 31, 2026 - Solid-stack, preparation, and multi-model workflows:
+- Added a dedicated Solid Mode while preserving normal Prusa slicing when the
+  mode is off.
+- Added synchronized multi-object slicing so every model completes layer n
+  before any model advances to layer n + 1.
+- Added independently saved settings for each selected object, model-specific
+  G-code comments, and multi-model project persistence.
+- Added sacrificial anchor pads and configurable multi-layer line/grid
+  transitions for solid and normal slicing, including optional transition
+  contours and layer-by-layer rotation.
+- Added optional internal-flange support that extends transition material
+  through enclosed hollow regions only as far as detected floors or flanges.
+- Added solid edge-interleave, two-pass, normal line, and island scan
+  strategies.
+- Added configurable line-only top and bottom closure layers.
+- Added preview support for solid patterns, contours, closures, anchors,
+  transitions, multiple models, and transformed bed positions.
+- Added optional recoater bed-drop and return motion with configurable distance
+  and feed rate.
+- Added complete project restoration, ordered text settings reports, duplicate
+  model numbering, a rounded-box primitive, and Jobs Manager date sorting.
+- Fixed settings serialization/multiprocessing issues that could leave slicing
+  stuck at zero percent.
+- Updated the metal-printer branch README with the current feature overview,
+  setup guidance, safety notes, and saved-project behavior.
