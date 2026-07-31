@@ -36,6 +36,9 @@ interface ZoneExposureSettings {
   noRoutineFirstLayers: number;
   reservoirLiftPerLayer: number;
   recoaterFeedRate: number;
+  recoaterReturnBedDropEnabled: boolean;
+  recoaterReturnBedDropDistance: number;
+  recoaterReturnBedFeedRate: number;
   bedOffsetX: number;
   bedOffsetY: number;
 }
@@ -53,6 +56,52 @@ export interface Slic3rSettings {
 export interface PrusaSettings extends Slic3rSettings, ZoneExposureSettings {
   /** Replace normal body/infill processing with a dense line-filled solid path. */
   solidModeEnabled: boolean;
+  /** Complete each shared layer across all disconnected solids before advancing Z. */
+  solidMergeObjectsByLayer: boolean;
+  /** Add engraved square layers below each disconnected solid footprint. */
+  solidAnchorPadEnabled: boolean;
+  solidAnchorPadLayers: number;
+  /** Side length of each square sacrificial anchor pad. */
+  solidAnchorPadSize: number;
+  solidAnchorPadPower: number;
+  solidAnchorPadSpeed: number;
+  /** Percentage overlap between adjacent anchor-pad engraving tracks. */
+  solidAnchorPadLineOverlap: number;
+  /** Rotate the anchor-pad engraving direction after each pad layer. */
+  solidAnchorPadRotateEachLayer: boolean;
+  /** Degrees added to the anchor-pad engraving angle per layer. */
+  solidAnchorPadRotationPerLayer: number;
+  /** Add engraved line or grid layers between the anchor and model. */
+  solidTransitionEnabled: boolean;
+  /** Number of engraved transition layers below the model. */
+  solidTransitionLayers: number;
+  solidTransitionPattern: 'lines' | 'grid';
+  solidTransitionPower: number;
+  solidTransitionSpeed: number;
+  /** Estimated physical width of one transition-layer track. */
+  solidTransitionTrackWidth: number;
+  /** Percentage overlap between adjacent lines inside a hatch bundle. */
+  solidTransitionLineOverlap: number;
+  /** Number of parallel lines in each transition hatch bundle. */
+  solidTransitionLineCount: number;
+  /** Center-to-center spacing between repeated line hatch bundles. */
+  solidTransitionHatchSpacing: number;
+  /** Center-to-center spacing between grid hatch bundles. */
+  solidTransitionGridSpacing: number;
+  /** Unpowered clearance left around crossings in a transition grid. */
+  solidTransitionGridClearance: number;
+  solidTransitionRasterDirection: 'x' | 'y' | 'diagonal';
+  /** Rotate the transition pattern after each transition layer. */
+  solidTransitionRotateEachLayer: boolean;
+  /** Degrees added to the transition pattern angle per layer. */
+  solidTransitionRotationPerLayer: number;
+  /** Add a vectored perimeter around the transition pattern. */
+  solidTransitionContourEnabled: boolean;
+  solidTransitionContourPower: number;
+  solidTransitionContourSpeed: number;
+  solidTransitionContourLineCount: number;
+  /** Percentage overlap between transition lines and its contour shell. */
+  solidTransitionContourOverlap: number;
   /** Estimated physical width of one solid hatch track. */
   solidTrackWidth: number;
   /** Fill the first and final layers to the boundary without a contour. */
@@ -83,6 +132,14 @@ export interface PrusaSettings extends Slic3rSettings, ZoneExposureSettings {
   solidRasterDirection: 'x' | 'y' | 'diagonal';
   /** Alternate the solid hatch by 90 degrees on successive layers. */
   solidCrossHatch: boolean;
+  /** Reorder solid engraving lines instead of scanning them sequentially. */
+  solidAlternateLines: boolean;
+  solidAlternateMode: 'two-pass' | 'edge-interleave';
+  /** Complete the solid hatch in smaller spatial cells. */
+  solidIslandScanningEnabled: boolean;
+  /** Requested side length of one island before fitting whole cells. */
+  solidIslandSize: number;
+  solidIslandScanStrategy: 'normal' | 'two-pass' | 'edge-interleave';
   solidPower: number;
   solidSpeed: number;
   /** Percentage overlap between the solid hatch and contour shell. */
@@ -154,11 +211,34 @@ export interface PrusaSettings extends Slic3rSettings, ZoneExposureSettings {
   flatSurfaceSkinSecondPassHatchOverlap: number;
   flatSurfaceSkinSecondPassRasterDirection: 'x' | 'y' | 'diagonal';
   flatSurfaceSkinSecondPassCrossHatch: boolean;
-  flatSurfaceSkinSecondPassBoundaryMode: 'engrave' | 'vector' | 'contour' | 'none';
+  flatSurfaceSkinSecondPassBoundaryMode:
+    | 'engrave'
+    | 'vector'
+    | 'contour'
+    | 'none';
   flatSurfaceSkinSecondPassContourLineCount: number;
   flatSurfaceSkinSecondPassContourOverlap: number;
   roofHollowInfillEnabled: boolean;
   roofHollowInfillOverlap: number;
+  /** Project newly detected internal floors through only the hollow below them. */
+  internalFloorSupportEnabled: boolean;
+  internalFloorSupportMode: 'vectoring' | 'engraving';
+  internalFloorSupportType: 'Lines' | 'Grid';
+  internalFloorSupportPower: number;
+  internalFloorSupportSpeed: number;
+  internalFloorSupportTrackWidth: number;
+  internalFloorSupportLineOverlap: number;
+  internalFloorSupportLineCount: number;
+  internalFloorSupportHatchSpacing: number;
+  internalFloorSupportGridSpacing: number;
+  internalFloorSupportGridClearance: number;
+  internalFloorSupportAngle: number;
+  internalFloorSupportRotationPerLayer: number;
+  internalFloorSupportGroupingEnabled: boolean;
+  internalFloorSupportGroupLayers: number;
+  internalFloorSupportBoundaryClearance: number;
+  internalFloorSupportMinimumArea: number;
+  internalFloorSupportOptimizeScanOrder: boolean;
   variableGridInfillEnabled: boolean;
   variableGridTarget: 'hollow' | 'both';
   variableGridInfillLayersBeforeRoof: number;
@@ -254,14 +334,35 @@ export interface PyslmSettings extends Slic3rSettings, ZoneExposureSettings {
 export interface SlicingData {
   modelFile: string;
   modelSize: THREE.Vector3;
+  solidObjects?: SolidSlicingObject[];
   printHeightLowerLimit?: number;
   printHeightLimit?: number;
   slicingSettings: SlicingSettings;
 }
 
-export interface SlicerJobProject {
-  version: number;
+export interface SolidSlicingObject {
+  id: string;
+  name: string;
   modelFile: string;
+  modelSize: THREE.Vector3;
+  offsetX: number;
+  offsetY: number;
+  prusaSettings: PrusaSettings;
+}
+
+export interface SlicerJobModel {
+  name: string;
+  modelFile: string;
+  solidSettings: Partial<PrusaSettings>;
+}
+
+export interface SlicerJobProject {
+  kind?: 'olos-slicer-project';
+  version: number;
+  /** Original model, project, or generated G-code name used for reports. */
+  sourceFilename?: string;
+  modelFile: string;
+  models?: SlicerJobModel[];
   printHeightLowerLimit?: number;
   printHeightLimit?: number;
   slicingSettings: SlicingSettings;
@@ -293,6 +394,9 @@ export interface SlicingSettings {
   /** Engraving mode for laser: 'vectoring' for traditional hatching, 'engraving' for line-by-line. */
   engravingMode?: 'vectoring' | 'engraving';
   recoaterFeedRate?: number;
+  recoaterReturnBedDropEnabled?: boolean;
+  recoaterReturnBedDropDistance?: number;
+  recoaterReturnBedFeedRate?: number;
 }
 
 interface InfillImageSettings {

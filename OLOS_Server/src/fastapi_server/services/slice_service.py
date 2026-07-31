@@ -1,8 +1,12 @@
+import threading
+
 from ..constants import FastAPIServerConstants as constants
 
 
 class SliceService:
     """Service class to handle slicing operations and slicing profiles management."""
+
+    _slice_request_lock = threading.Lock()
 
     @staticmethod
     def _check_response(response, error_msg=''):
@@ -45,14 +49,23 @@ class SliceService:
             Exception: If slicing process fails.
         """
 
-        shared_core_data.fastapi_read_queue.put(
-            [constants.SLICE_DATA_TYPE,
-                {
-                    'process': constants.SLICE_PROCESS,
-                    'slice_data': slice_data
-                }])
-        response = shared_core_data.fastapi_write_queue.get()
-        return cls._check_response(response, constants.ERROR_SLICE_PROCESS)
+        if not cls._slice_request_lock.acquire(blocking=False):
+            raise RuntimeError(
+                "A slicing process is already running. Wait for it to finish "
+                "or cancel it before slicing again.")
+
+        try:
+            shared_core_data.fastapi_read_queue.put(
+                [constants.SLICE_DATA_TYPE,
+                    {
+                        'process': constants.SLICE_PROCESS,
+                        'slice_data': slice_data
+                    }])
+            response = shared_core_data.fastapi_write_queue.get()
+            return cls._check_response(
+                response, constants.ERROR_SLICE_PROCESS)
+        finally:
+            cls._slice_request_lock.release()
 
     @classmethod
     def save_slicing_result_locally(cls, shared_core_data, filename):

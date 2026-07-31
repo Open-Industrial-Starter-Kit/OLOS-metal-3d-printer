@@ -29,6 +29,9 @@ DEFAULT_RECOATER_OUT = -405
 DEFAULT_RECOATER_HOME = -54.5
 DEFAULT_RECOATER_FEED = 3000
 DEFAULT_PARKING_FEED = 10000
+DEFAULT_RECOATER_RETURN_BED_DROP = 0.2
+DEFAULT_RECOATER_RETURN_BED_FEED = 50
+DEFAULT_RECOATER_RETURN_BACKLASH_OVERSHOOT = 0.03
 
 
 # ============================================================================
@@ -206,6 +209,42 @@ def generate_routine_block(slicing_data, next_z):
     # The sample reference always uses the constant layer height (e.g. 0.075mm).
     layer_height = float(slicing_data.get('layer_height', next_z))
     z_str = f"{round(layer_height, 3):.3f}"
+    return_bed_drop_enabled = bool(
+        slicing_data.get('recoater_return_bed_drop_enabled', False))
+
+    if return_bed_drop_enabled:
+        return_bed_drop = float(slicing_data.get(
+            'recoater_return_bed_drop_distance',
+            DEFAULT_RECOATER_RETURN_BED_DROP))
+        return_bed_feed = int(slicing_data.get(
+            'recoater_return_bed_feed_rate',
+            DEFAULT_RECOATER_RETURN_BED_FEED))
+        dipped_z = layer_height + return_bed_drop
+        overshoot_z = max(
+            0.0,
+            layer_height - DEFAULT_RECOATER_RETURN_BACKLASH_OVERSHOOT)
+        dipped_z_str = f"{round(dipped_z, 3):.3f}"
+        overshoot_z_str = f"{round(overshoot_z, 3):.3f}"
+        recoater_return_block = (
+            ";move recoater to right max\n"
+            f"G53 B{recoater_out}\n"
+            ";dip build bed for recoater return-pass clearance\n"
+            f"G1 Z{dipped_z_str} F{return_bed_feed}\n"
+            ";restore recoater speed after the modal Z feedrate\n"
+            f"G1 F{recoater_feed}\n"
+            ";move back recoater to near home position\n"
+            f"G53 B{recoater_home}\n"
+            ";restore build bed with backlash-safe final approach\n"
+            f"G1 Z{overshoot_z_str} F{return_bed_feed}\n"
+            f"G1 Z{z_str} F{return_bed_feed}\n"
+        )
+    else:
+        recoater_return_block = (
+            ";move to left max the recoater\n"
+            f"G53 B{recoater_out}\n"
+            ";move back recoater to near home position\n"
+            f"G53 B{recoater_home}\n"
+        )
 
     if slicing_data.get("visicut_style", False):
         return (
@@ -226,10 +265,7 @@ def generate_routine_block(slicing_data, next_z):
             "\n"
             ";speed for the recoater motion\n"
             f"G1 F{recoater_feed}\n"
-            ";move to left max the recoater\n"
-            f"G53 B{recoater_out}\n"
-            ";move back recoater to near home position\n"
-            f"G53 B{recoater_home}\n"
+            f"{recoater_return_block}"
             "\n"
             f"G1 F{parking_feed}\n"
             f"G53 X{bed_x} Y{bed_y}\n"
@@ -259,10 +295,7 @@ def generate_routine_block(slicing_data, next_z):
         "\n"
         ";speed for the recoater motion\n"
         f"G1 F{recoater_feed}\n"
-        ";move to left max the recoater\n"
-        f"G53 B{recoater_out}\n"
-        ";move back recoater to near home position\n"
-        f"G53 B{recoater_home}\n"
+        f"{recoater_return_block}"
         "\n"
         ";force laser off before returning to work origin\n"
         "M5\n"

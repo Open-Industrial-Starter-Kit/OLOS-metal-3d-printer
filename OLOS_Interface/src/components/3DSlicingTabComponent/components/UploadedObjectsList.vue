@@ -8,7 +8,10 @@
     class="models-list no-border-radius"
     header-class="sticky-header"
   >
-    <q-list v-for="(model, index) in uploadedModels" :key="index">
+    <q-list
+      v-for="model in uploadedModels"
+      :key="model.object.userData.id"
+    >
       <q-item
         clickable
         :active="selectedModel.object?.userData.id === model.object.userData.id"

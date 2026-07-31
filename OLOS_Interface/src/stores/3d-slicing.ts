@@ -6,6 +6,7 @@ import {
   PyslmSettings,
   Slic3rSettings,
   SlicingData,
+  SolidSlicingObject,
   SlicerJobProject,
   SlicingSettings,
 } from 'src/interfaces/3D.slicing.interface';
@@ -22,6 +23,76 @@ import { Gcode3DPreviewer } from 'src/services/gcode.previewer.service/gcode.3D.
 import { getSliceWorker } from 'src/workers';
 import { configurationSettings } from 'src/services/configuration.loader.service';
 import { SlicingApiResponse } from 'src/interfaces/API.interface';
+import {
+  createPrintSettingsReport,
+  settingsReportFilename,
+} from 'src/utils/print-settings-report';
+
+const SHARED_SOLID_SETTING_KEYS = new Set([
+  'solidModeEnabled',
+  'solidMergeObjectsByLayer',
+]);
+export const SLICER_PROJECT_EXTENSION = '.olos-project.json';
+
+const captureSolidObjectSettings = (
+  settings: PrusaSettings
+): Partial<PrusaSettings> =>
+  Object.fromEntries(
+    Object.entries(settings).filter(
+      ([key]) => key.startsWith('solid') && !SHARED_SOLID_SETTING_KEYS.has(key)
+    )
+  ) as Partial<PrusaSettings>;
+
+const applySolidObjectSettings = (
+  target: PrusaSettings,
+  settings: Partial<PrusaSettings>
+) => {
+  const sharedMode = target.solidModeEnabled;
+  const sharedMergeMode = target.solidMergeObjectsByLayer;
+  Object.assign(
+    target,
+    captureSolidObjectSettings(
+      Constants.DEFAULT_PRUSA_SLICER_SETTINGS as PrusaSettings
+    ),
+    settings
+  );
+  target.solidModeEnabled = sharedMode;
+  target.solidMergeObjectsByLayer = sharedMergeMode;
+};
+
+const base64ModelToFile = (modelFile: string, filename: string) => {
+  const [metadata, encodedData] = modelFile.split(',', 2);
+  const mimeType =
+    metadata.match(/^data:(.*?);base64$/)?.[1] || 'application/octet-stream';
+  const binary = atob(encodedData);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], filename, { type: mimeType });
+};
+
+const stlFilename = (name: string) =>
+  name.toLowerCase().endsWith(Constants.SLICING_FILES_FORMATE.STL)
+    ? name
+    : `${name}${Constants.SLICING_FILES_FORMATE.STL}`;
+
+const isSlicerJobProject = (value: unknown): value is SlicerJobProject => {
+  if (!value || typeof value !== 'object') return false;
+  const project = value as Partial<SlicerJobProject>;
+  return (
+    typeof project.version === 'number' &&
+    typeof project.modelFile === 'string' &&
+    Boolean(project.slicingSettings) &&
+    (!project.models ||
+      project.models.every(
+        (model) =>
+          typeof model?.name === 'string' &&
+          typeof model?.modelFile === 'string' &&
+          Boolean(model?.solidSettings)
+      ))
+  );
+};
 
 /**
  *  Pinia store for managing the state and actions of the 3D slicing interface.
@@ -108,14 +179,26 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
     /** An array containing data for all models loaded into the scene. */
     uploadedModels: [] as Array<ModelData>,
 
+    /** Solid-only exposure and path settings keyed by stable scene-model ID. */
+    solidObjectSettingsById: {} as Record<string, Partial<PrusaSettings>>,
+
     /** The instance of the 3D slicer service. */
     threeDSlicerInstance: null as ThreeDSlicer | null,
 
     /** Flag indicating if a new slicing result is available for preview. */
     isNewSlicingProcess: false as boolean,
 
+    /** Prevents overlapping requests from writing the shared slicing result. */
+    isSliceRequestPending: false as boolean,
+
     /** Project waiting to be restored after the slicer scene is mounted. */
     pendingJobProject: null as SlicerJobProject | null,
+
+    /** Filename used to identify the current print and name its report. */
+    activeProjectFilename: '' as string,
+
+    /** Filename associated with a project waiting for scene restoration. */
+    pendingJobProjectFilename: '' as string,
 
     /** Fingerprint of the G-code currently drawn in the slice preview. */
     previewedSlicingResultKey: '' as string,
@@ -243,6 +326,161 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
   },
 
   actions: {
+    /** Creates a complete, plain-data snapshot of the current slicer project. */
+    async createSlicerProjectSnapshot(): Promise<SlicerJobProject> {
+      if (!this.threeDSlicerInstance) {
+        throw new Error('The 3D slicer is not initialized.');
+      }
+      const slicer = this.threeDSlicerInstance;
+
+      const modelBlob = slicer.exportSceneModels(
+        Constants.SLICING_FILES_FORMATE.STL
+      );
+      if (!modelBlob) {
+        throw new Error('The slicer project has no model data to save.');
+      }
+
+      this.saveSelectedSolidObjectSettings();
+      const exportedObjects = slicer.exportSceneModelsIndividually(
+        Constants.SLICING_FILES_FORMATE.STL
+      );
+      const models = await Promise.all(
+        exportedObjects.map(async (model) => ({
+          name: model.name,
+          modelFile: await slicer.blobToBase64(model.blob),
+          solidSettings:
+            this.solidObjectSettingsById[model.id] ||
+            captureSolidObjectSettings(this.prusaSettings),
+        }))
+      );
+
+      return JSON.parse(
+        JSON.stringify({
+          kind: 'olos-slicer-project',
+          version: 4,
+          sourceFilename:
+            this.activeProjectFilename ||
+            exportedObjects[0]?.name ||
+            'olos_print',
+          modelFile: await this.threeDSlicerInstance.blobToBase64(modelBlob),
+          models,
+          printHeightLimit: this.isPrintHeightLimited
+            ? this.printHeightLimit
+            : undefined,
+          printHeightLowerLimit: this.isPrintHeightLimited
+            ? this.printHeightLowerLimit
+            : undefined,
+          slicingSettings: {
+            profileName: this.slicingProfileName,
+            slicingLib: this.selectedSlicerLib,
+            engravingMode: this.prusaSettings.engravingMode,
+            recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
+            recoaterReturnBedDropEnabled:
+              this.prusaSettings.recoaterReturnBedDropEnabled,
+            recoaterReturnBedDropDistance:
+              this.prusaSettings.recoaterReturnBedDropDistance,
+            recoaterReturnBedFeedRate:
+              this.prusaSettings.recoaterReturnBedFeedRate,
+            slic3rSettings: this.slic3rSettings,
+            prusaSettings: this.prusaSettings,
+            pyslmSettings: this.pyslmSettings,
+          },
+        })
+      ) as SlicerJobProject;
+    },
+    /** Downloads the complete multi-object slicer project to the user's PC. */
+    async saveSlicerProjectLocally(filename: string) {
+      const projectFilename = filename
+        .toLowerCase()
+        .endsWith(SLICER_PROJECT_EXTENSION)
+        ? filename
+        : `${filename}${SLICER_PROJECT_EXTENSION}`;
+      this.activeProjectFilename = projectFilename;
+      const project = await this.createSlicerProjectSnapshot();
+      const blob = new Blob([JSON.stringify(project, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = projectFilename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    /** Downloads every setting used by the active print as ordered text. */
+    exportPrintSettingsReport() {
+      this.saveSelectedSolidObjectSettings();
+
+      const activeSettings =
+        this.selectedSlicerLib === Constants.SLICING_LIBRARIES.PRUSA_SLICER
+          ? this.prusaSettings
+          : this.selectedSlicerLib === Constants.SLICING_LIBRARIES.PYSLM
+          ? this.pyslmSettings
+          : this.slic3rSettings;
+      const models = this.uploadedModels.map((model, index) => {
+        const id = model.object?.userData.id as string | undefined;
+        return {
+          name: model.object?.name || `Model ${index + 1}`,
+          solidSettings:
+            this.selectedSlicerLib ===
+              Constants.SLICING_LIBRARIES.PRUSA_SLICER &&
+            this.prusaSettings.solidModeEnabled &&
+            id
+              ? this.solidObjectSettingsById[id]
+              : undefined,
+        };
+      });
+      const sourceFilename =
+        this.activeProjectFilename || models[0]?.name || 'olos_print';
+      const report = createPrintSettingsReport({
+        sourceFilename,
+        profileName: this.slicingProfileName,
+        slicingLibrary: this.selectedSlicerLib,
+        printHeightLowerLimit: this.isPrintHeightLimited
+          ? this.printHeightLowerLimit
+          : undefined,
+        printHeightLimit: this.isPrintHeightLimited
+          ? this.printHeightLimit
+          : undefined,
+        engineSettings: activeSettings,
+        models,
+      });
+      const filename = settingsReportFilename(sourceFilename);
+      const blob = new Blob([report], {
+        type: 'text/plain;charset=utf-8',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return filename;
+    },
+    /** Loads a complete multi-object slicer project selected from the PC. */
+    async loadSlicerProjectFile(file: File) {
+      let project: unknown;
+      try {
+        project = JSON.parse(await file.text());
+      } catch {
+        throw new Error('The selected slicer project is not valid JSON.');
+      }
+      if (!isSlicerJobProject(project)) {
+        throw new Error(
+          'The selected file is not a valid OLOS slicer project.'
+        );
+      }
+
+      this.pendingJobProject = project;
+      this.pendingJobProjectFilename = project.sourceFilename || file.name;
+      if (this.threeDSlicerInstance) {
+        await this.restorePendingJobProject();
+      }
+    },
     /**
      *  Initializes the ThreeDSlicer instance if it doesn't exist and draws the 3D container.
      * @returns {Promise<void>}
@@ -262,16 +500,57 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
      * @returns {Promise<void>}
      */
     async sliceAllSceneModels() {
+      if (this.isSliceRequestPending) {
+        return;
+      }
+      this.isSliceRequestPending = true;
+
       try {
         if (this.threeDSlicerInstance) {
-          const blob = this.threeDSlicerInstance.exportSceneModels(
+          const slicer = this.threeDSlicerInstance;
+          this.saveSelectedSolidObjectSettings();
+          const blob = slicer.exportSceneModels(
             Constants.SLICING_FILES_FORMATE.STL
           );
 
           if (blob) {
+            const shouldMergeSolidObjects =
+              this.selectedSlicerLib ===
+                Constants.SLICING_LIBRARIES.PRUSA_SLICER &&
+              this.prusaSettings.solidModeEnabled &&
+              this.prusaSettings.solidMergeObjectsByLayer;
+            let solidObjects: SolidSlicingObject[] | undefined;
+
+            if (shouldMergeSolidObjects) {
+              const exportedObjects = slicer.exportSceneModelsIndividually(
+                Constants.SLICING_FILES_FORMATE.STL
+              );
+              solidObjects = await Promise.all(
+                exportedObjects.map(async (model) => {
+                  const objectSettings =
+                    this.solidObjectSettingsById[model.id] ||
+                    captureSolidObjectSettings(this.prusaSettings);
+                  const prusaSettings = JSON.parse(
+                    JSON.stringify(this.prusaSettings)
+                  ) as PrusaSettings;
+                  applySolidObjectSettings(prusaSettings, objectSettings);
+
+                  return {
+                    id: model.id,
+                    name: model.name,
+                    modelFile: await slicer.blobToBase64(model.blob),
+                    modelSize: model.modelSize,
+                    offsetX: model.offsetX,
+                    offsetY: model.offsetY,
+                    prusaSettings,
+                  };
+                })
+              );
+            }
             const slicingData = {
-              modelFile: await this.threeDSlicerInstance.blobToBase64(blob),
-              modelSize: this.threeDSlicerInstance.getModelsGroupSize(),
+              modelFile: await slicer.blobToBase64(blob),
+              modelSize: slicer.getModelsGroupSize(),
+              solidObjects,
               printHeightLimit: this.isPrintHeightLimited
                 ? this.printHeightLimit
                 : undefined,
@@ -283,6 +562,12 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
                 slicingLib: this.selectedSlicerLib,
                 engravingMode: this.prusaSettings.engravingMode,
                 recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
+                recoaterReturnBedDropEnabled:
+                  this.prusaSettings.recoaterReturnBedDropEnabled,
+                recoaterReturnBedDropDistance:
+                  this.prusaSettings.recoaterReturnBedDropDistance,
+                recoaterReturnBedFeedRate:
+                  this.prusaSettings.recoaterReturnBedFeedRate,
                 slic3rSettings: this.slic3rSettings,
                 prusaSettings: this.prusaSettings,
                 pyslmSettings: this.pyslmSettings,
@@ -294,6 +579,7 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
               this.isNewSlicingProcess = true;
               this.estimatedPrintTimeSeconds =
                 res.data.estimatedPrintTimeSeconds ?? null;
+              this.sliceInfoStore.updateSlicingProgress(1, 1);
 
               this.debuggerStore.addLog(
                 new Date(),
@@ -319,7 +605,13 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
                 error.response?.data.detail
             );
           }
+          return;
         }
+        throw error instanceof Error
+          ? error
+          : new Error(Constants.API_ERROR_MESSAGES.SLICING_MESSAGE);
+      } finally {
+        this.isSliceRequestPending = false;
       }
     },
     /**
@@ -396,40 +688,8 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
      */
     async saveSlicingResultLocally(filename: string) {
       try {
-        if (!this.threeDSlicerInstance) {
-          throw new Error('The 3D slicer is not initialized.');
-        }
-
-        const modelBlob = this.threeDSlicerInstance.exportSceneModels(
-          Constants.SLICING_FILES_FORMATE.STL
-        );
-        if (!modelBlob) {
-          throw new Error('The slicer model could not be saved.');
-        }
-
-        // Pinia state is reactive and cannot be passed to structuredClone.
-        // JSON serialization creates the plain-data snapshot required here.
-          const project: SlicerJobProject = {
-            version: 1,
-            modelFile: await this.threeDSlicerInstance.blobToBase64(modelBlob),
-            printHeightLimit: this.isPrintHeightLimited
-              ? this.printHeightLimit
-              : undefined,
-            printHeightLowerLimit: this.isPrintHeightLimited
-              ? this.printHeightLowerLimit
-              : undefined,
-            slicingSettings: JSON.parse(
-            JSON.stringify({
-              profileName: this.slicingProfileName,
-              slicingLib: this.selectedSlicerLib,
-              engravingMode: this.prusaSettings.engravingMode,
-              recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
-              slic3rSettings: this.slic3rSettings,
-              prusaSettings: this.prusaSettings,
-              pyslmSettings: this.pyslmSettings,
-            })
-          ),
-        };
+        this.activeProjectFilename = filename;
+        const project = await this.createSlicerProjectSnapshot();
 
         const res = (await API.saveSlicingFile(filename)).data;
 
@@ -503,6 +763,11 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
         slicingLib: this.selectedSlicerLib,
         engravingMode: this.prusaSettings.engravingMode,
         recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
+        recoaterReturnBedDropEnabled:
+          this.prusaSettings.recoaterReturnBedDropEnabled,
+        recoaterReturnBedDropDistance:
+          this.prusaSettings.recoaterReturnBedDropDistance,
+        recoaterReturnBedFeedRate: this.prusaSettings.recoaterReturnBedFeedRate,
         slic3rSettings: this.slic3rSettings,
         prusaSettings: this.prusaSettings,
         pyslmSettings: this.pyslmSettings,
@@ -540,6 +805,11 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
         slicingLib: this.selectedSlicerLib,
         engravingMode: this.prusaSettings.engravingMode,
         recoaterFeedRate: this.prusaSettings.recoaterFeedRate,
+        recoaterReturnBedDropEnabled:
+          this.prusaSettings.recoaterReturnBedDropEnabled,
+        recoaterReturnBedDropDistance:
+          this.prusaSettings.recoaterReturnBedDropDistance,
+        recoaterReturnBedFeedRate: this.prusaSettings.recoaterReturnBedFeedRate,
         slic3rSettings: this.slic3rSettings,
         prusaSettings: this.prusaSettings,
         pyslmSettings: this.pyslmSettings,
@@ -611,9 +881,9 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
         this.slice3DPreviewerInstance = new Gcode3DPreviewer(config);
       }
 
-      const previewKey = `${this.slicingResult.length}:${
-        this.slicingResult.slice(0, 128)
-      }:${this.slicingResult.slice(-128)}`;
+      const previewKey = `${
+        this.slicingResult.length
+      }:${this.slicingResult.slice(0, 128)}:${this.slicingResult.slice(-128)}`;
       const shouldRedrawPreview =
         this.isNewSlicingProcess ||
         previewKey !== this.previewedSlicingResultKey;
@@ -667,6 +937,7 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
               variableGridStage3ToDraw,
               surfaceSkinToDraw,
               isEngravingLayer,
+              preparationType,
               done,
               error,
             } = e.data;
@@ -681,7 +952,8 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
                 variableGridStage2ToDraw,
                 variableGridStage3ToDraw,
                 surfaceSkinToDraw,
-                isEngravingLayer
+                isEngravingLayer,
+                preparationType
               );
             }
 
@@ -719,6 +991,8 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       try {
         const response = await API.loadJobProject(filename);
         this.pendingJobProject = response.data;
+        this.pendingJobProjectFilename =
+          response.data.sourceFilename || filename;
         if (this.threeDSlicerInstance) {
           await this.restorePendingJobProject();
         }
@@ -737,25 +1011,64 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       if (!this.pendingJobProject || !this.threeDSlicerInstance) return;
 
       const project = this.pendingJobProject;
+      const sourceFilename =
+        project.sourceFilename ||
+        this.pendingJobProjectFilename ||
+        'olos_print';
       this.isModelLoading = true;
       try {
         this.clearSlicingContainer();
+        this.activeProjectFilename = sourceFilename;
         this.setSlicingProfileSettings(project.slicingSettings);
 
-        const [metadata, encodedData] = project.modelFile.split(',', 2);
-        const mimeType =
-          metadata.match(/^data:(.*?);base64$/)?.[1] ||
-          'application/octet-stream';
-        const binary = atob(encodedData);
-        const bytes = new Uint8Array(binary.length);
-        for (let index = 0; index < binary.length; index += 1) {
-          bytes[index] = binary.charCodeAt(index);
+        if (project.version >= 2 && project.models?.length) {
+          const restoredSolidSettings: Array<{
+            id: string;
+            settings: Partial<PrusaSettings>;
+          }> = [];
+          for (const [index, savedModel] of project.models.entries()) {
+            const displayName =
+              savedModel.name || `Saved Job Model ${index + 1}`;
+            const modelFile = base64ModelToFile(
+              savedModel.modelFile,
+              stlFilename(displayName)
+            );
+            const restoredModel =
+              await this.threeDSlicerInstance.addSavedProjectModel(
+                modelFile,
+                displayName
+              );
+            const restoredId = restoredModel?.object?.userData.id as
+              | string
+              | undefined;
+            if (restoredId) {
+              restoredSolidSettings.push({
+                id: restoredId,
+                settings: JSON.parse(
+                  JSON.stringify(savedModel.solidSettings || {})
+                ) as Partial<PrusaSettings>,
+              });
+            }
+          }
+          for (const restored of restoredSolidSettings) {
+            this.solidObjectSettingsById[restored.id] = restored.settings;
+          }
+          const selectedId = this.selectedModel.object?.userData.id as
+            | string
+            | undefined;
+          if (selectedId && this.solidObjectSettingsById[selectedId]) {
+            applySolidObjectSettings(
+              this.prusaSettings,
+              this.solidObjectSettingsById[selectedId]
+            );
+          }
+        } else {
+          const modelFile = base64ModelToFile(
+            project.modelFile,
+            'saved-job-model.stl'
+          );
+          await this.threeDSlicerInstance.addSavedProjectModel(modelFile);
         }
-        const modelFile = new File([bytes], 'saved-job-model.stl', {
-          type: mimeType,
-        });
-
-        await this.threeDSlicerInstance.addSavedProjectModel(modelFile);
         this.refreshPrintHeightRange();
         if (project.printHeightLimit != null) {
           this.isPrintHeightLimited = true;
@@ -763,6 +1076,7 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
           this.setPrintHeightLimit(project.printHeightLimit);
         }
         this.pendingJobProject = null;
+        this.pendingJobProjectFilename = '';
         this.resetSlicingContainerControls();
       } finally {
         this.isModelLoading = false;
@@ -795,6 +1109,8 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
       this.printHeightLimit = 0;
       this.printHeightLowerLimit = 0;
       this.threeDSlicerInstance?.setPrintHeightLimit(null);
+      this.solidObjectSettingsById = {};
+      this.activeProjectFilename = '';
       this.setSlicingProfileSettings(this.defaultSlicingProfile);
     },
     /**
@@ -804,6 +1120,9 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
      */
     addNew3DModelToSlicingContainer(file: File) {
       if (this.threeDSlicerInstance) {
+        if (!this.uploadedModels.length) {
+          this.activeProjectFilename = file.name;
+        }
         this.isModelLoading = true;
         this.threeDSlicerInstance.addNew3DModel(file).then(() => {
           if (this.threeDSlicerInstance) {
@@ -862,9 +1181,18 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
      * @returns {void}
      */
     setSelectedModel(model: ModelData) {
+      this.saveSelectedSolidObjectSettings();
       this.selectedModel = {
         ...model,
       };
+      const selectedId = model.object?.userData.id as string | undefined;
+      if (selectedId) {
+        this.ensureSolidObjectSettings(selectedId);
+        applySolidObjectSettings(
+          this.prusaSettings,
+          this.solidObjectSettingsById[selectedId]
+        );
+      }
       this.refreshPrintHeightRange();
     },
     /**
@@ -884,8 +1212,35 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
      */
     setUploadedModelsList(list: ModelData[]) {
       this.uploadedModels = [...list];
+      const activeIds = new Set(
+        list
+          .map((model) => model.object?.userData.id as string | undefined)
+          .filter((id): id is string => Boolean(id))
+      );
+      for (const id of Object.keys(this.solidObjectSettingsById)) {
+        if (!activeIds.has(id)) delete this.solidObjectSettingsById[id];
+      }
+      for (const id of activeIds) this.ensureSolidObjectSettings(id);
       this.isSlicingContainerEmpty = this.uploadedModels.length ? false : true;
       this.refreshPrintHeightRange();
+    },
+    /** Initializes a model profile from the currently visible solid settings. */
+    ensureSolidObjectSettings(id: string) {
+      if (!this.solidObjectSettingsById[id]) {
+        this.solidObjectSettingsById[id] = captureSolidObjectSettings(
+          this.prusaSettings
+        );
+      }
+    },
+    /** Persists the visible solid controls against the selected scene model. */
+    saveSelectedSolidObjectSettings() {
+      const selectedId = this.selectedModel.object?.userData.id as
+        | string
+        | undefined;
+      if (!selectedId) return;
+      this.solidObjectSettingsById[selectedId] = captureSolidObjectSettings(
+        this.prusaSettings
+      );
     },
     /** Refreshes the crop slider range after loading or transforming models. */
     refreshPrintHeightRange() {
@@ -1196,6 +1551,7 @@ export const use3DSlicingStore = defineStore('3dSlicingStore', {
         ...structuredClone(Constants.DEFAULT_PRUSA_SLICER_SETTINGS),
         ...slicingProfile.prusaSettings,
       };
+      this.saveSelectedSolidObjectSettings();
       this.pyslmSettings = {
         ...structuredClone(Constants.DEFAULT_PYSLM_SETTINGS),
         ...slicingProfile.pyslmSettings,

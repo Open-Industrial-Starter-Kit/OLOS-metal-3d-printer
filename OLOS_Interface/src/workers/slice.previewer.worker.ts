@@ -30,6 +30,8 @@ interface WorkerResponse {
   surfaceSkinToDraw?: Line[];
   /** True when this batch belongs to an engraving scan-mode layer. */
   isEngravingLayer?: boolean;
+  /** Preparation stage represented by this layer, when applicable. */
+  preparationType?: 'anchor' | 'transition';
   /** Whether this is the final message. */
   done: boolean;
   /** Error object in case of failure. */
@@ -141,6 +143,13 @@ const splitRoofHollowInfillSections = (gcode: string) =>
     gcode,
     ';ROOF HOLLOW INFILL START',
     ';ROOF HOLLOW INFILL END'
+  );
+
+const splitInternalFloorSupportSections = (gcode: string) =>
+  extractMarkedSections(
+    gcode,
+    ';INTERNAL FLOOR SUPPORT START',
+    ';INTERNAL FLOOR SUPPORT END'
   );
 
 const extractMarkedSections = (
@@ -432,6 +441,15 @@ const drawVisicutStyleBlocks = (gcodeStr: string) => {
         ));
     const blockIsSolidFaceClosure =
       /;FACE CLOSURE:\s*LINE-ONLY\b/i.test(blockLines.join('\n'));
+    const preparationType = /;SOLID ANCHOR PAD START LAYER\b/i.test(
+      blockLines.join('\n')
+    )
+      ? 'anchor'
+      : /;SOLID TRANSITION PATTERN START LAYER\b/i.test(
+          blockLines.join('\n')
+        )
+      ? 'transition'
+      : undefined;
     const blockLayerMatch =
       (blockLines[0] ?? '').match(/;\s*LAYER\s+(\d+)\s+SCAN MODE:/i) ??
       blockLines.join('\n').match(/;\s*LAYER\s+(\d+)\s+SCAN MODE:/i);
@@ -455,8 +473,11 @@ const drawVisicutStyleBlocks = (gcodeStr: string) => {
       (contourStart === -1
         ? mainBlockLines.join('\n')
         : mainBlockLines.slice(0, contourStart).join('\n'));
-    const roofHollowSplit = splitRoofHollowInfillSections(
+    const floorSupportSplit = splitInternalFloorSupportSections(
       rawInfillBatch
+    );
+    const roofHollowSplit = splitRoofHollowInfillSections(
+      floorSupportSplit.mainGcode
     );
     const variableGridSplit = splitVariableGridSections(
       roofHollowSplit.mainGcode,
@@ -464,6 +485,7 @@ const drawVisicutStyleBlocks = (gcodeStr: string) => {
     );
     const mainGcode = variableGridSplit.mainGcode;
     const gridGcode = [
+      ...floorSupportSplit.sections,
       ...roofHollowSplit.sections,
     ]
       .filter((section) => section.trim().length > 0)
@@ -515,7 +537,9 @@ const drawVisicutStyleBlocks = (gcodeStr: string) => {
       mainBlockLines.join('\n')
     );
     const hasSolidContour =
-      /^\s*;SOLID CONTOUR START\b/im.test(mainBlockLines.join('\n'));
+      /^\s*;SOLID (?:TRANSITION )?CONTOUR START\b/im.test(
+        mainBlockLines.join('\n')
+      );
     // Draw the real vector walls AND any explicit PREVIEW_CONTOUR outlines on
     // the same layer (see the matching note in the marker-based path). Keeping
     // both avoids dropping walls on flat-roof contour-shell layers.
@@ -579,6 +603,7 @@ const drawVisicutStyleBlocks = (gcodeStr: string) => {
         ? drawableCutMovesOnly(convertGCodeToLines(surfaceSkinBatch))
         : undefined,
       isEngravingLayer: blockIsEngraving,
+      preparationType,
       done: false,
     } as WorkerResponse);
   });
@@ -690,6 +715,16 @@ addEventListener('message', async (event: MessageEvent<WorkerMessageData>) => {
           /;FACE CLOSURE:\s*LINE-ONLY\b/i.test(
             gcodeStr.substring(infillIndex, contourEndIndex)
           );
+        const preparationBlock = gcodeStr.substring(
+          infillIndex,
+          contourEndIndex
+        );
+        const preparationType =
+          /;SOLID ANCHOR PAD START LAYER\b/i.test(preparationBlock)
+            ? 'anchor'
+            : /;SOLID TRANSITION PATTERN START LAYER\b/i.test(preparationBlock)
+            ? 'transition'
+            : undefined;
         const previewLayerIndex = layerHeaderMatch
           ? Math.max(Number(layerHeaderMatch[1]) - 1, 0)
           : batchIndex;
@@ -720,8 +755,11 @@ addEventListener('message', async (event: MessageEvent<WorkerMessageData>) => {
           ';SURFACE SKIN START',
           ';SURFACE SKIN END'
         );
-        const roofHollowSplit = splitRoofHollowInfillSections(
+        const floorSupportSplit = splitInternalFloorSupportSections(
           surfaceSplit.mainGcode
+        );
+        const roofHollowSplit = splitRoofHollowInfillSections(
+          floorSupportSplit.mainGcode
         );
         const variableGridSplit = splitVariableGridSections(
           roofHollowSplit.mainGcode,
@@ -729,6 +767,7 @@ addEventListener('message', async (event: MessageEvent<WorkerMessageData>) => {
         );
         const mainGcode = variableGridSplit.mainGcode;
         const gridGcode = [
+          ...floorSupportSplit.sections,
           ...roofHollowSplit.sections,
         ]
           .filter((section) => section.trim().length > 0)
@@ -785,7 +824,9 @@ addEventListener('message', async (event: MessageEvent<WorkerMessageData>) => {
         const previewContourBatch =
           previewContourCommentsToGcode(fullContourBatch);
         const hasSolidContour =
-          /^\s*;SOLID CONTOUR START\b/im.test(fullContourBatch);
+          /^\s*;SOLID (?:TRANSITION )?CONTOUR START\b/im.test(
+            fullContourBatch
+          );
         // Draw the layer's real vector walls AND any explicit PREVIEW_CONTOUR
         // outlines (e.g. the flat-roof contour shell). Real moves come from
         // decoding the full contour section; the preview outlines are re-added
@@ -873,6 +914,7 @@ addEventListener('message', async (event: MessageEvent<WorkerMessageData>) => {
           variableGridStage3ToDraw,
           surfaceSkinToDraw,
           isEngravingLayer: batchIsEngraving,
+          preparationType,
           done: false,
         } as WorkerResponse);
       }

@@ -11,13 +11,59 @@
     <q-list>
       <q-item clickable @click="handleStartNewProject" v-close-popup>
         <q-item-section avatar>
+          <q-avatar icon="note_add" color="dark" text-color="white" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>New Project</q-item-label>
+          <q-item-label caption>Start with a new model</q-item-label>
+        </q-item-section>
+      </q-item>
+
+      <q-item clickable @click="handleOpenProject" v-close-popup>
+        <q-item-section avatar>
           <q-avatar icon="folder_open" color="dark" text-color="white" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>Open</q-item-label>
-          <q-item-label caption>Start a new project</q-item-label>
+          <q-item-label>Open Project</q-item-label>
+          <q-item-label caption
+            >Restore models and object settings</q-item-label
+          >
         </q-item-section>
       </q-item>
+
+      <q-item
+        clickable
+        @click="handleSaveProject"
+        :disable="isSlicingContainerEmpty"
+        v-close-popup
+      >
+        <q-item-section avatar>
+          <q-avatar icon="save" color="dark" text-color="white" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Save Project</q-item-label>
+          <q-item-label caption>Keep every model and its settings</q-item-label>
+        </q-item-section>
+      </q-item>
+
+      <q-item
+        clickable
+        @click="handleExportPrintSettings"
+        :disable="isSlicingContainerEmpty"
+        v-close-popup
+      >
+        <q-item-section avatar>
+          <q-avatar icon="description" color="dark" text-color="white" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Export Print Settings</q-item-label>
+          <q-item-label caption
+            >Download every setting as ordered text</q-item-label
+          >
+        </q-item-section>
+      </q-item>
+
+      <q-separator inset spaced />
 
       <q-item
         clickable
@@ -25,15 +71,13 @@
         :disable="isSlicingContainerEmpty"
       >
         <q-item-section avatar>
-          <q-avatar icon="save" color="dark" text-color="white" />
+          <q-avatar icon="save_alt" color="dark" text-color="white" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>Save</q-item-label>
-          <q-item-label caption>Save models in system</q-item-label>
+          <q-item-label>Save Merged Model</q-item-label>
+          <q-item-label caption>Save one STL in system media</q-item-label>
         </q-item-section>
       </q-item>
-
-      <q-separator inset spaced />
 
       <q-item clickable @click="handleAddNewModel" v-close-popup>
         <q-item-section avatar>
@@ -54,14 +98,6 @@
           <q-item-label caption>Upload .nc to preview</q-item-label>
         </q-item-section>
       </q-item>
-
-      <input
-        ref="gcodeFileInput"
-        type="file"
-        accept=".nc,.gcode,.cnc"
-        class="hidden-file-input"
-        @change="onGcodeFileSelected"
-      />
 
       <q-item clickable :disable="isSlicingContainerEmpty">
         <q-item-section avatar>
@@ -107,11 +143,30 @@
       </q-item>
     </q-list>
   </q-btn-dropdown>
+
+  <input
+    ref="projectFileInput"
+    type="file"
+    accept=".olos-project.json,application/json"
+    class="hidden-file-input"
+    @change="onProjectFileSelected"
+  />
+
+  <input
+    ref="gcodeFileInput"
+    type="file"
+    accept=".nc,.gcode,.cnc"
+    class="hidden-file-input"
+    @change="onGcodeFileSelected"
+  />
 </template>
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { Constants } from 'src/constants';
-import { use3DSlicingStore } from 'src/stores/3d-slicing';
+import {
+  SLICER_PROJECT_EXTENSION,
+  use3DSlicingStore,
+} from 'src/stores/3d-slicing';
 import { storeToRefs } from 'pinia';
 import { useMediaFilesManagementStore } from 'src/stores/media-files-management';
 import { ref } from 'vue';
@@ -135,6 +190,7 @@ const slicingStore = use3DSlicingStore();
  * media assets like 3D models.
  */
 const mediaFilesManagementStore = useMediaFilesManagementStore();
+const projectFileInput = ref<HTMLInputElement | null>(null);
 const gcodeFileInput = ref<HTMLInputElement | null>(null);
 
 /**
@@ -182,6 +238,62 @@ const handleAddNewModel = () => {
   mediaFilesManagementStore.showAddNewMediaDialog(
     Constants.MEDIA_TYPES.THREE_D_MODELS
   );
+};
+
+/** Downloads a complete multi-object slicer project. */
+const handleSaveProject = () => {
+  showWriteFileNameDialog(SLICER_PROJECT_EXTENSION).onOk(async (filename) => {
+    try {
+      await slicingStore.saveSlicerProjectLocally(filename);
+      notifyMessage.success('Slicer project saved.');
+    } catch (error: unknown) {
+      notifyMessage.error(
+        error instanceof Error
+          ? error.message
+          : 'Could not save the slicer project.'
+      );
+    }
+  });
+};
+
+const handleOpenProject = () => {
+  const chooseProject = () => projectFileInput.value?.click();
+  if (isSlicingContainerEmpty.value) {
+    chooseProject();
+    return;
+  }
+  showConfirmOpenProjectDialog().onOk(chooseProject);
+};
+
+const handleExportPrintSettings = () => {
+  try {
+    const filename = slicingStore.exportPrintSettingsReport();
+    notifyMessage.success(`${filename} saved to Downloads.`);
+  } catch (error: unknown) {
+    notifyMessage.error(
+      error instanceof Error
+        ? error.message
+        : 'Could not export the print settings.'
+    );
+  }
+};
+
+const onProjectFileSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+
+  try {
+    await slicingStore.loadSlicerProjectFile(file);
+    notifyMessage.success('Slicer project loaded.');
+  } catch (error: unknown) {
+    notifyMessage.error(
+      error instanceof Error
+        ? error.message
+        : 'Could not load the slicer project.'
+    );
+  }
 };
 
 const handleImportGcode = () => {
@@ -258,6 +370,17 @@ const showConfirmNewProjectDialog = () => {
     title: 'Confirm',
     message:
       'Any unsaved data will be lost. Are you sure you want to start new Project?',
+    cancel: true,
+    persistent: true,
+    color: 'dark',
+  });
+};
+
+const showConfirmOpenProjectDialog = () => {
+  return $q.dialog({
+    title: 'Open Project',
+    message:
+      'Opening a project replaces the models currently on the bed. Continue?',
     cancel: true,
     persistent: true,
     color: 'dark',

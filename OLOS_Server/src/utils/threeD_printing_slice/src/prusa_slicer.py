@@ -338,6 +338,78 @@ class PrusaSlicer:
                 -1.0, min(1.0, float(slicing_data.get(
                     "roof_hollow_infill_overlap",
                     slicing_data.get("contour_infill_overlap", 0.15)) or 0.0)))
+            internal_floor_support_enabled = bool(
+                slicing_data.get("internal_floor_support_enabled", False))
+            internal_floor_support_mode = str(slicing_data.get(
+                "internal_floor_support_mode", "vectoring")
+                or "vectoring").strip().lower()
+            if internal_floor_support_mode not in {"vectoring", "engraving"}:
+                internal_floor_support_mode = "vectoring"
+            internal_floor_support_type = str(slicing_data.get(
+                "internal_floor_support_type", "Lines") or "Lines").strip()
+            if internal_floor_support_type.lower() not in {"lines", "grid"}:
+                internal_floor_support_type = "Lines"
+            internal_floor_support_type = (
+                "Grid"
+                if internal_floor_support_type.lower() == "grid"
+                else "Lines")
+            internal_floor_support_power = max(
+                0.0, min(100.0, float(slicing_data.get(
+                    "internal_floor_support_power",
+                    slicing_data.get("infill_power", 50)) or 0)))
+            internal_floor_support_speed = max(
+                1.0, float(slicing_data.get(
+                    "internal_floor_support_speed",
+                    slicing_data.get("infill_speed", 3000)) or 3000))
+            internal_floor_support_track_width = max(
+                0.01, float(slicing_data.get(
+                    "internal_floor_support_track_width",
+                    slicing_data.get("nominal_vector_track_width", 0.2))
+                    or 0.2))
+            internal_floor_support_line_overlap = max(
+                -1.0, min(0.95, float(slicing_data.get(
+                    "internal_floor_support_line_overlap", 0) or 0)))
+            internal_floor_support_line_spacing = max(
+                0.01,
+                internal_floor_support_track_width
+                * (1.0 - internal_floor_support_line_overlap))
+            internal_floor_support_line_count = max(
+                1, int(slicing_data.get(
+                    "internal_floor_support_line_count",
+                    slicing_data.get("infill_line_count", 3)) or 3))
+            internal_floor_support_hatch_spacing = max(
+                0.01, float(slicing_data.get(
+                    "internal_floor_support_hatch_spacing",
+                    slicing_data.get("infill_hatch_spacing", 1)) or 1))
+            internal_floor_support_grid_spacing = max(
+                0.01, float(slicing_data.get(
+                    "internal_floor_support_grid_spacing",
+                    slicing_data.get("grid_spacing", 2)) or 2))
+            internal_floor_support_grid_clearance = max(
+                0.0, float(slicing_data.get(
+                    "internal_floor_support_grid_clearance",
+                    slicing_data.get("grid_clearance", 0.2)) or 0))
+            internal_floor_support_angle = float(slicing_data.get(
+                "internal_floor_support_angle",
+                slicing_data.get("infill_angle", 45)) or 0)
+            internal_floor_support_rotation_per_layer = float(
+                slicing_data.get(
+                    "internal_floor_support_rotation_per_layer",
+                    slicing_data.get("hatch_rotation_per_layer", 67)) or 0)
+            internal_floor_support_grouping_enabled = bool(slicing_data.get(
+                "internal_floor_support_grouping_enabled", False))
+            internal_floor_support_group_layers = max(
+                1, int(slicing_data.get(
+                    "internal_floor_support_group_layers", 1) or 1))
+            internal_floor_support_boundary_clearance = max(
+                0.0, float(slicing_data.get(
+                    "internal_floor_support_boundary_clearance", 0) or 0))
+            internal_floor_support_minimum_area = max(
+                0.0, float(slicing_data.get(
+                    "internal_floor_support_minimum_area", 0.1) or 0))
+            internal_floor_support_optimize_scan_order = bool(
+                slicing_data.get(
+                    "internal_floor_support_optimize_scan_order", True))
             variable_grid_infill_enabled = bool(
                 slicing_data.get("variable_grid_infill_enabled", False))
             variable_grid_target = str(
@@ -454,10 +526,148 @@ class PrusaSlicer:
                     "nominal_vector_track_width", 0.2) or 0.2))
             solid_mode_enabled = bool(
                 slicing_data.get("solid_mode_enabled", False))
+            solid_merge_objects_by_layer = bool(slicing_data.get(
+                "solid_merge_objects_by_layer", True))
             solid_track_width = max(
                 0.01, float(slicing_data.get(
                     "solid_track_width", nominal_vector_track_width)
                     or nominal_vector_track_width))
+            solid_anchor_pad_enabled = bool(slicing_data.get(
+                "solid_anchor_pad_enabled", False))
+            solid_anchor_pad_layers = max(1, int(slicing_data.get(
+                "solid_anchor_pad_layers", 1) or 1))
+            solid_anchor_pad_size = max(
+                0.01, float(slicing_data.get(
+                    "solid_anchor_pad_size", 20) or 20))
+            solid_anchor_pad_power = int(max(
+                0, min(100, float(slicing_data.get(
+                    "solid_anchor_pad_power", 50) or 0))))
+            solid_anchor_pad_speed = int(max(
+                1, float(slicing_data.get(
+                    "solid_anchor_pad_speed", 3000) or 3000)))
+            solid_anchor_pad_line_overlap = max(
+                -1.0, min(0.95, float(slicing_data.get(
+                    "solid_anchor_pad_line_overlap", 0.0) or 0.0)))
+            solid_anchor_pad_hatch_pitch = max(
+                0.0005,
+                solid_track_width * (1.0 - solid_anchor_pad_line_overlap))
+            solid_anchor_pad_rotate_each_layer = bool(slicing_data.get(
+                "solid_anchor_pad_rotate_each_layer", False))
+            solid_anchor_pad_rotation_per_layer = max(
+                -180.0, min(180.0, float(slicing_data.get(
+                    "solid_anchor_pad_rotation_per_layer", 90) or 0)))
+            solid_transition_enabled = bool(slicing_data.get(
+                "solid_transition_enabled", False))
+            solid_transition_layers = max(
+                1, min(1000, int(slicing_data.get(
+                    "solid_transition_layers", 1) or 1)))
+            solid_transition_pattern = str(slicing_data.get(
+                "solid_transition_pattern", "lines") or "lines").lower()
+            if solid_transition_pattern not in {"lines", "grid"}:
+                solid_transition_pattern = "lines"
+            solid_transition_power = int(max(
+                0, min(100, float(slicing_data.get(
+                    "solid_transition_power", 50) or 0))))
+            solid_transition_speed = int(max(
+                1, float(slicing_data.get(
+                    "solid_transition_speed", 3000) or 3000)))
+            solid_transition_track_width = max(
+                0.01, float(slicing_data.get(
+                    "solid_transition_track_width", solid_track_width)
+                    or solid_track_width))
+            solid_transition_line_overlap = max(
+                -1.0, min(0.95, float(slicing_data.get(
+                    "solid_transition_line_overlap", 0.0) or 0.0)))
+            solid_transition_line_spacing = max(
+                0.0005,
+                solid_transition_track_width
+                * (1.0 - solid_transition_line_overlap))
+            solid_transition_line_count = max(
+                1, min(25, int(slicing_data.get(
+                    "solid_transition_line_count", 1) or 1)))
+            solid_transition_hatch_spacing = max(
+                0.0005, float(slicing_data.get(
+                    "solid_transition_hatch_spacing", 1.0) or 1.0))
+            solid_transition_grid_spacing = max(
+                0.0005, float(slicing_data.get(
+                    "solid_transition_grid_spacing", 1.0) or 1.0))
+            solid_transition_grid_clearance = max(
+                0.0, float(slicing_data.get(
+                    "solid_transition_grid_clearance", 0.2) or 0.0))
+            solid_transition_raster_direction = str(slicing_data.get(
+                "solid_transition_raster_direction", "x") or "x").lower()
+            if solid_transition_raster_direction not in {
+                    "x", "y", "diagonal"}:
+                solid_transition_raster_direction = "x"
+            solid_transition_rotate_each_layer = bool(slicing_data.get(
+                "solid_transition_rotate_each_layer", False))
+            solid_transition_rotation_per_layer = max(
+                -180.0, min(180.0, float(slicing_data.get(
+                    "solid_transition_rotation_per_layer", 90) or 0)))
+            solid_transition_contour_enabled = bool(slicing_data.get(
+                "solid_transition_contour_enabled", True))
+            solid_transition_contour_power = int(max(
+                0, min(100, float(slicing_data.get(
+                    "solid_transition_contour_power", 50) or 0))))
+            solid_transition_contour_speed = int(max(
+                1, float(slicing_data.get(
+                    "solid_transition_contour_speed", 3000) or 3000)))
+            solid_transition_contour_line_count = max(
+                1, min(25, int(slicing_data.get(
+                    "solid_transition_contour_line_count", 1) or 1)))
+            solid_transition_contour_overlap = max(
+                -1.0, min(1.0, float(slicing_data.get(
+                    "solid_transition_contour_overlap", 0.0) or 0.0)))
+            normal_transition_floor_support_enabled = (
+                not solid_mode_enabled
+                and solid_transition_enabled
+                and internal_floor_support_enabled)
+            if not solid_mode_enabled:
+                internal_floor_support_enabled = (
+                    normal_transition_floor_support_enabled)
+            if normal_transition_floor_support_enabled:
+                internal_floor_support_mode = "engraving"
+                internal_floor_support_type = (
+                    "Grid"
+                    if solid_transition_pattern == "grid"
+                    else "Lines")
+                internal_floor_support_power = solid_transition_power
+                internal_floor_support_speed = solid_transition_speed
+                internal_floor_support_track_width = (
+                    solid_transition_track_width)
+                internal_floor_support_line_overlap = (
+                    solid_transition_line_overlap)
+                internal_floor_support_line_spacing = (
+                    solid_transition_line_spacing)
+                internal_floor_support_line_count = (
+                    solid_transition_line_count)
+                internal_floor_support_hatch_spacing = (
+                    solid_transition_hatch_spacing)
+                internal_floor_support_grid_spacing = (
+                    solid_transition_grid_spacing)
+                internal_floor_support_grid_clearance = (
+                    solid_transition_grid_clearance)
+                internal_floor_support_angle = {
+                    "x": 0.0,
+                    "y": 90.0,
+                    "diagonal": 45.0,
+                }[solid_transition_raster_direction]
+                internal_floor_support_rotation_per_layer = (
+                    solid_transition_rotation_per_layer
+                    if solid_transition_rotate_each_layer else 0.0)
+                internal_floor_support_grouping_enabled = False
+                internal_floor_support_boundary_clearance = (
+                    max(
+                        0.0,
+                        (
+                            solid_transition_contour_line_count - 1
+                        ) * solid_transition_line_spacing
+                        - solid_transition_contour_overlap
+                        * solid_transition_line_spacing,
+                    )
+                    if solid_transition_contour_enabled else 0.0
+                )
+                internal_floor_support_optimize_scan_order = True
             solid_close_top_bottom_enabled = bool(slicing_data.get(
                 "solid_close_top_bottom_enabled", False))
             solid_close_top_bottom_layers = max(1, int(slicing_data.get(
@@ -513,6 +723,25 @@ class PrusaSlicer:
                 solid_raster_direction = "x"
             solid_cross_hatch = bool(slicing_data.get(
                 "solid_cross_hatch", False))
+            solid_alternate_lines = bool(slicing_data.get(
+                "solid_alternate_lines", True))
+            solid_alternate_mode = str(slicing_data.get(
+                "solid_alternate_mode",
+                "edge-interleave") or "edge-interleave").strip().lower()
+            if solid_alternate_mode not in (
+                    "two-pass", "edge-interleave"):
+                solid_alternate_mode = "edge-interleave"
+            solid_island_scanning_enabled = bool(slicing_data.get(
+                "solid_island_scanning_enabled", False))
+            solid_island_size = max(
+                0.01, float(slicing_data.get(
+                    "solid_island_size", 3) or 3))
+            solid_island_scan_strategy = str(slicing_data.get(
+                "solid_island_scan_strategy",
+                "edge-interleave") or "edge-interleave").strip().lower()
+            if solid_island_scan_strategy not in (
+                    "normal", "two-pass", "edge-interleave"):
+                solid_island_scan_strategy = "edge-interleave"
             solid_contour_overlap = max(
                 -1.0, min(1.0, float(slicing_data.get(
                     "solid_contour_overlap", 0.0) or 0.0)))
@@ -651,9 +880,131 @@ class PrusaSlicer:
                 f"{engraving_acceleration:.3f} mm/s^2\n"
                 f";ROUTINE RECOATER FEED: {recoater_feed} mm/min\n\n"
             )
+            gcode_file.write(
+                f";TRANSITION INTERNAL FLANGE SUPPORT: "
+                f"{'ENABLED' if internal_floor_support_enabled and not solid_mode_enabled else 'DISABLED'}\n"
+                f";INTERNAL FLOOR SUPPORT SOURCE: "
+                f"{'TRANSITION PREPARATION' if normal_transition_floor_support_enabled else 'DISABLED'}\n"
+                f";INTERNAL FLOOR SUPPORT EXTENT: "
+                f"ENCLOSED HOLLOW TO ONE LAYER BELOW DETECTED FLOOR OR FLANGE\n"
+                f";INTERNAL FLOOR SUPPORT MODE: "
+                f"{internal_floor_support_mode.upper()}\n"
+                f";INTERNAL FLOOR SUPPORT PATTERN: "
+                f"{internal_floor_support_type.upper()}\n"
+                f";INTERNAL FLOOR SUPPORT POWER: "
+                f"{internal_floor_support_power}\n"
+                f";INTERNAL FLOOR SUPPORT FEED: "
+                f"{internal_floor_support_speed} mm/min\n"
+                f";INTERNAL FLOOR SUPPORT TRACK WIDTH: "
+                f"{internal_floor_support_track_width:.4f} mm\n"
+                f";INTERNAL FLOOR SUPPORT LINE OVERLAP: "
+                f"{internal_floor_support_line_overlap * 100.0:.2f}%\n"
+                f";INTERNAL FLOOR SUPPORT LINE SPACING: "
+                f"{internal_floor_support_line_spacing:.4f} mm\n"
+                f";INTERNAL FLOOR SUPPORT LINES PER HATCH: "
+                f"{internal_floor_support_line_count}\n"
+                f";INTERNAL FLOOR SUPPORT HATCH SPACING: "
+                f"{internal_floor_support_hatch_spacing:.4f} mm\n"
+                f";INTERNAL FLOOR SUPPORT GRID SPACING: "
+                f"{internal_floor_support_grid_spacing:.4f} mm\n"
+                f";INTERNAL FLOOR SUPPORT GRID CLEARANCE: "
+                f"{internal_floor_support_grid_clearance:.4f} mm\n"
+                f";INTERNAL FLOOR SUPPORT BASE ANGLE: "
+                f"{internal_floor_support_angle:.4f} deg\n"
+                f";INTERNAL FLOOR SUPPORT ROTATION PER LAYER: "
+                f"{internal_floor_support_rotation_per_layer:.4f} deg\n"
+                f";INTERNAL FLOOR SUPPORT BOUNDARY CLEARANCE: "
+                f"{internal_floor_support_boundary_clearance:.4f} mm\n"
+                f";INTERNAL FLOOR SUPPORT MINIMUM FLOOR AREA: "
+                f"{internal_floor_support_minimum_area:.4f} mm^2\n\n"
+            )
+            if (
+                not solid_mode_enabled
+                and (solid_anchor_pad_enabled or solid_transition_enabled)
+            ):
+                gcode_file.write(
+                    ";NORMAL OBJECT PREPARATION: ENABLED\n"
+                    f";SACRIFICIAL ANCHOR PAD: "
+                    f"{'ENABLED' if solid_anchor_pad_enabled else 'DISABLED'}\n"
+                    f";ANCHOR PAD LAYERS: {solid_anchor_pad_layers}\n"
+                    f";ANCHOR PAD SIZE: {solid_anchor_pad_size:.4f} mm x "
+                    f"{solid_anchor_pad_size:.4f} mm\n"
+                    f";ANCHOR PAD POWER: {solid_anchor_pad_power}\n"
+                    f";ANCHOR PAD FEED: {solid_anchor_pad_speed} mm/min\n"
+                    f";ANCHOR PAD LINE OVERLAP: "
+                    f"{solid_anchor_pad_line_overlap * 100.0:.2f}%\n"
+                    f";TRANSITION LAYERS: "
+                    f"{solid_transition_layers if solid_transition_enabled else 0}\n"
+                    f";TRANSITION BASE HEIGHT: "
+                    f"{solid_transition_layers * slicing_data['layer_height'] if solid_transition_enabled else 0:.4f} mm\n"
+                    f";TRANSITION INTERNAL FLANGE SUPPORT: "
+                    f"{'ENABLED' if solid_transition_enabled else 'DISABLED'}\n"
+                    f";TRANSITION PATTERN: "
+                    f"{solid_transition_pattern.upper()}\n"
+                    f";TRANSITION POWER: {solid_transition_power}\n"
+                    f";TRANSITION FEED: "
+                    f"{solid_transition_speed} mm/min\n\n"
+                )
             if solid_mode_enabled:
                 gcode_file.write(
                     ";SOLID OBJECT MODE: ENABLED\n"
+                    f";SOLID MERGE OBJECTS BY LAYER: "
+                    f"{'ENABLED' if solid_merge_objects_by_layer else 'DISABLED'}\n"
+                    f";SOLID SACRIFICIAL ANCHOR PAD: "
+                    f"{'ENABLED' if solid_anchor_pad_enabled else 'DISABLED'}\n"
+                    f";SOLID ANCHOR PAD LAYERS: {solid_anchor_pad_layers}\n"
+                    f";SOLID ANCHOR PAD SIZE: "
+                    f"{solid_anchor_pad_size:.4f} mm x "
+                    f"{solid_anchor_pad_size:.4f} mm\n"
+                    f";SOLID ANCHOR PAD POWER: {solid_anchor_pad_power}\n"
+                    f";SOLID ANCHOR PAD FEED: "
+                    f"{solid_anchor_pad_speed} mm/min\n"
+                    f";SOLID ANCHOR PAD LINE OVERLAP: "
+                    f"{solid_anchor_pad_line_overlap * 100.0:.2f}%\n"
+                    f";SOLID ANCHOR PAD HATCH PITCH: "
+                    f"{solid_anchor_pad_hatch_pitch:.4f} mm\n"
+                    f";SOLID ANCHOR PAD ROTATE EACH LAYER: "
+                    f"{'ENABLED' if solid_anchor_pad_rotate_each_layer else 'DISABLED'}\n"
+                    f";SOLID ANCHOR PAD ROTATION PER LAYER: "
+                    f"{solid_anchor_pad_rotation_per_layer:.4f} deg\n"
+                    f";SOLID TRANSITION LAYER: "
+                    f"{'ENABLED' if solid_transition_enabled else 'DISABLED'}\n"
+                    f";SOLID TRANSITION LAYERS: "
+                    f"{solid_transition_layers}\n"
+                    f";SOLID TRANSITION PATTERN: "
+                    f"{solid_transition_pattern.upper()}\n"
+                    f";SOLID TRANSITION POWER: "
+                    f"{solid_transition_power}\n"
+                    f";SOLID TRANSITION FEED: "
+                    f"{solid_transition_speed} mm/min\n"
+                    f";SOLID TRANSITION TRACK WIDTH: "
+                    f"{solid_transition_track_width:.4f} mm\n"
+                    f";SOLID TRANSITION LINE SPACING: "
+                    f"{solid_transition_line_spacing:.4f} mm\n"
+                    f";SOLID TRANSITION LINES PER HATCH: "
+                    f"{solid_transition_line_count}\n"
+                    f";SOLID TRANSITION HATCH SPACING: "
+                    f"{solid_transition_hatch_spacing:.4f} mm\n"
+                    f";SOLID TRANSITION GRID SPACING: "
+                    f"{solid_transition_grid_spacing:.4f} mm\n"
+                    f";SOLID TRANSITION GRID CLEARANCE: "
+                    f"{solid_transition_grid_clearance:.4f} mm\n"
+                    f";SOLID TRANSITION DIRECTION: "
+                    f"{solid_transition_raster_direction.upper()}\n"
+                    f";SOLID TRANSITION ROTATE EACH LAYER: "
+                    f"{'ENABLED' if solid_transition_rotate_each_layer else 'DISABLED'}\n"
+                    f";SOLID TRANSITION ROTATION PER LAYER: "
+                    f"{solid_transition_rotation_per_layer:.4f} deg\n"
+                    f";SOLID TRANSITION CONTOUR: "
+                    f"{'ENABLED' if solid_transition_contour_enabled else 'DISABLED'}\n"
+                    f";SOLID TRANSITION CONTOUR POWER: "
+                    f"{solid_transition_contour_power}\n"
+                    f";SOLID TRANSITION CONTOUR FEED: "
+                    f"{solid_transition_contour_speed} mm/min\n"
+                    f";SOLID TRANSITION CONTOUR LINES: "
+                    f"{solid_transition_contour_line_count}\n"
+                    f";SOLID TRANSITION CONTOUR OVERLAP: "
+                    f"{solid_transition_contour_overlap * 100.0:.2f}%\n"
                     f";SOLID TRACK WIDTH: {solid_track_width:.4f} mm\n"
                     f";SOLID CLOSE TOP AND BOTTOM: "
                     f"{'ENABLED' if solid_close_top_bottom_enabled else 'DISABLED'}\n"
@@ -692,7 +1043,17 @@ class PrusaSlicer:
                     f"{solid_intermediate_speed} mm/min\n"
                     f";SOLID INTERMEDIATE ZONE HATCH SPACING: "
                     f"{solid_intermediate_engraving_hatch_spacing:.4f} mm\n"
-                    f";SOLID BULK PATTERN: EDGE INTERLEAVE ENGRAVING\n"
+                    f";SOLID ALTERNATE PATHS: "
+                    f"{'ENABLED' if solid_alternate_lines else 'DISABLED'}\n"
+                    f";SOLID ALTERNATE MODE: "
+                    f"{solid_alternate_mode.upper()}\n"
+                    f";SOLID ISLAND SCANNING: "
+                    f"{'ENABLED' if solid_island_scanning_enabled else 'DISABLED'}\n"
+                    f";SOLID REQUESTED ISLAND SIZE: "
+                    f"{solid_island_size:.4f} mm x "
+                    f"{solid_island_size:.4f} mm\n"
+                    f";SOLID ISLAND LINE STRATEGY: "
+                    f"{solid_island_scan_strategy.upper()}\n"
                     f";SOLID RASTER DIRECTION: "
                     f"{solid_raster_direction.upper()}\n"
                     f";SOLID CROSS HATCH: "
@@ -842,12 +1203,406 @@ class PrusaSlicer:
                 f"{'ENABLED' if fill_enclosed_hollows else 'DISABLED'}\n\n"
             )
 
+            anchor_pad_layer_count = (
+                solid_anchor_pad_layers
+                if solid_anchor_pad_enabled else 0)
+            transition_layer_count = (
+                solid_transition_layers
+                if solid_transition_enabled else 0)
+            foundation_layer_count = (
+                anchor_pad_layer_count + transition_layer_count)
+            total_output_layers = total_layers + foundation_layer_count
+            anchor_pad_regions = []
+            printable_layer_regions = []
+            anchor_source_region = GeometryCollection()
+            if foundation_layer_count:
+                printable_layer_regions = [
+                    candidate
+                    for candidate in layer_regions
+                    if candidate is not None and not candidate.is_empty
+                ]
+                if not printable_layer_regions:
+                    raise ValueError(
+                        "Cannot create preparation layers because the "
+                        "model has no non-empty layers.")
+                anchor_source_region = unary_union(printable_layer_regions)
+                if not anchor_source_region.is_valid:
+                    anchor_source_region = anchor_source_region.buffer(0)
+
+            if anchor_pad_layer_count:
+                model_footprints = [
+                    polygon
+                    for polygon in slicer._extract_polygons(
+                        anchor_source_region)
+                    if not polygon.is_empty and polygon.area > 1e-9
+                ]
+                model_footprints = sorted(
+                    model_footprints,
+                    key=lambda polygon: (
+                        round(polygon.centroid.y, 6),
+                        round(polygon.centroid.x, 6),
+                        -polygon.area,
+                    ),
+                )
+                if not model_footprints:
+                    raise ValueError(
+                        "Cannot create sacrificial anchor pads because no "
+                        "model footprints could be resolved.")
+                pad_half_size = solid_anchor_pad_size / 2.0
+                pad_squares = []
+                for footprint in model_footprints:
+                    min_x, min_y, max_x, max_y = footprint.bounds
+                    center_x = (min_x + max_x) / 2.0
+                    center_y = (min_y + max_y) / 2.0
+                    pad_squares.append(box(
+                        center_x - pad_half_size,
+                        center_y - pad_half_size,
+                        center_x + pad_half_size,
+                        center_y + pad_half_size,
+                    ))
+
+                merged_anchor_pads = unary_union(pad_squares)
+                if not merged_anchor_pads.is_valid:
+                    merged_anchor_pads = merged_anchor_pads.buffer(0)
+                anchor_pad_regions = sorted(
+                    (
+                        polygon
+                        for polygon in slicer._extract_polygons(
+                            merged_anchor_pads)
+                        if not polygon.is_empty and polygon.area > 1e-9
+                    ),
+                    key=lambda polygon: (
+                        round(polygon.centroid.y, 6),
+                        round(polygon.centroid.x, 6),
+                        -polygon.area,
+                    ),
+                )
+                for anchor_pad_region in anchor_pad_regions:
+                    slicer._validate_region_on_bed(
+                        anchor_pad_region, machine_bounds)
+
+                gcode_file.write(
+                    f";SOLID ANCHOR PAD MODEL FOOTPRINTS: "
+                    f"{len(model_footprints)}\n"
+                    f";SOLID ANCHOR PAD EXPOSED REGIONS: "
+                    f"{len(anchor_pad_regions)}\n"
+                    ";SOLID ANCHOR PAD OVERLAPPING SQUARES: "
+                    "UNIONED TO PREVENT DOUBLE EXPOSURE\n\n"
+                )
+
+                for anchor_layer_index in range(anchor_pad_layer_count):
+                    anchor_raster_direction = solid_raster_direction
+                    anchor_raster_angle = None
+                    if solid_anchor_pad_rotate_each_layer:
+                        anchor_base_angle = {
+                            "x": 0.0,
+                            "y": 90.0,
+                            "diagonal": 45.0,
+                        }[solid_raster_direction]
+                        anchor_raster_angle = (
+                            anchor_base_angle
+                            + anchor_layer_index
+                            * solid_anchor_pad_rotation_per_layer
+                        ) % 180.0
+                    elif solid_cross_hatch and anchor_layer_index % 2 == 1:
+                        anchor_raster_direction = {
+                            "x": "y",
+                            "y": "x",
+                            "diagonal": "anti-diagonal",
+                        }[solid_raster_direction]
+                    anchor_effective_angle = (
+                        anchor_raster_angle
+                        if anchor_raster_angle is not None
+                        else {
+                            "x": 0.0,
+                            "y": 90.0,
+                            "diagonal": 45.0,
+                            "anti-diagonal": 135.0,
+                        }[anchor_raster_direction]
+                    )
+                    anchor_cross_hatch_active = (
+                        solid_cross_hatch
+                        and not solid_anchor_pad_rotate_each_layer
+                    )
+
+                    anchor_infill_settings = prepare_infill_settings(
+                        slicing_data=slicing_data,
+                        image_size=model_image_size,
+                        user_image_size=user_image_size,
+                        layer_index=0,
+                        total_layers=total_layers,
+                    )
+                    anchor_infill_settings["power"] = solid_anchor_pad_power
+                    anchor_infill_settings["speed"] = solid_anchor_pad_speed
+                    anchor_infill_settings["boundary_clearance"] = 0.0
+                    anchor_contour_settings = prepare_contour_settings(
+                        slicing_data=slicing_data,
+                        layer_index=0,
+                        total_layers=total_layers,
+                    )
+
+                    anchor_pattern_parts = []
+                    anchor_region_count = len(anchor_pad_regions)
+                    for object_index, anchor_pad_region in enumerate(
+                            anchor_pad_regions, start=1):
+                        anchor_pattern_body = (
+                            slicer._generate_surface_skin_engraving_gcode(
+                                region=anchor_pad_region,
+                                infill_settings=anchor_infill_settings,
+                                scanline_spacing=(
+                                    solid_anchor_pad_hatch_pitch),
+                                boundary_mode="engrave",
+                                reverse_scan=bool(anchor_layer_index % 2),
+                                optimize_scan_order=True,
+                                engraving_acceleration=(
+                                    engraving_acceleration),
+                                raster_direction=anchor_raster_direction,
+                                raster_angle=anchor_raster_angle,
+                                machine_bounds=machine_bounds,
+                                alternate_lines=True,
+                                alternate_mode="edge-interleave",
+                            )
+                        )
+                        anchor_pattern_parts.append(
+                            f";SOLID ANCHOR PAD REGION {object_index}/"
+                            f"{anchor_region_count} START\n"
+                            f"{anchor_pattern_body}\n"
+                            f";SOLID ANCHOR PAD REGION {object_index}/"
+                            f"{anchor_region_count} END"
+                        )
+
+                    anchor_infill_gcode = (
+                        f";SOLID ANCHOR PAD START LAYER "
+                        f"{anchor_layer_index + 1}\n"
+                        ";ENGRAVED LINE-ONLY SQUARES\n"
+                        f";SOLID ANCHOR PAD REGION COUNT "
+                        f"{anchor_region_count}\n"
+                        f";RASTER DIRECTION "
+                        f"{anchor_raster_direction.upper()} "
+                        f"CROSS HATCH "
+                        f"{'ENABLED' if anchor_cross_hatch_active else 'DISABLED'}\n"
+                        f";RASTER ANGLE "
+                        f"{anchor_effective_angle:.4f} deg "
+                        f"ROTATE EACH LAYER "
+                        f"{'ENABLED' if solid_anchor_pad_rotate_each_layer else 'DISABLED'}\n"
+                        f";TRACK WIDTH {solid_track_width:.4f} mm "
+                        f"PITCH {solid_anchor_pad_hatch_pitch:.4f} mm "
+                        f"OVERLAP "
+                        f"{solid_anchor_pad_line_overlap * 100.0:.2f}%\n"
+                        + "\n".join(anchor_pattern_parts)
+                        + f"\n;SOLID ANCHOR PAD END LAYER "
+                        f"{anchor_layer_index + 1}"
+                    )
+                    anchor_contour_gcode = (
+                        f";SOLID ANCHOR PAD CONTOUR OMITTED LAYER "
+                        f"{anchor_layer_index + 1}"
+                    )
+
+                    gcode_file.write(
+                        f";LAYER {anchor_layer_index + 1} SCAN MODE: "
+                        "ENGRAVING (SACRIFICIAL ANCHOR PAD)\n")
+                    anchor_gcode_content = generate_gcode_for_layer(
+                        image_to_gcode_helper=(
+                            slicer.image_to_gcode_helper),
+                        img_infill=None,
+                        svg_contour=None,
+                        contour_settings=anchor_contour_settings,
+                        infill_settings=anchor_infill_settings,
+                        z=z,
+                        layer_speed=slicing_data["layer_speed"],
+                        bounds=model_bounds,
+                        slicing_data=slicing_data,
+                        layer_index=anchor_layer_index,
+                        infill_gcode_override=anchor_infill_gcode,
+                        contour_gcode_override=anchor_contour_gcode,
+                    )
+                    z += slicing_data["layer_height"]
+                    gcode_file.write(anchor_gcode_content)
+                    send_slicing_progress_to_interface(
+                        websocket_write_queue=websocket_write_queue,
+                        layer_index=anchor_layer_index + 1,
+                        total_layers=total_output_layers,
+                    )
+
+            if transition_layer_count:
+                transition_region = printable_layer_regions[0]
+                if not transition_region.is_valid:
+                    transition_region = transition_region.buffer(0)
+                slicer._validate_region_on_bed(
+                    transition_region, machine_bounds)
+
+                transition_infill_settings = prepare_infill_settings(
+                    slicing_data=slicing_data,
+                    image_size=model_image_size,
+                    user_image_size=user_image_size,
+                    layer_index=0,
+                    total_layers=total_layers,
+                )
+                transition_infill_settings["power"] = (
+                    solid_transition_power)
+                transition_infill_settings["speed"] = (
+                    solid_transition_speed)
+                transition_infill_settings["boundary_clearance"] = (
+                    max(
+                        0.0,
+                        (
+                            solid_transition_contour_line_count - 1
+                        ) * solid_transition_line_spacing
+                        - solid_transition_contour_overlap
+                        * solid_transition_line_spacing,
+                    )
+                    if solid_transition_contour_enabled else 0.0
+                )
+                transition_contour_settings = prepare_contour_settings(
+                    slicing_data=slicing_data,
+                    layer_index=0,
+                    total_layers=total_layers,
+                )
+                transition_contour_settings["power"] = (
+                    solid_transition_contour_power)
+                transition_contour_settings["speed"] = (
+                    solid_transition_contour_speed)
+                transition_base_angle = {
+                    "x": 0.0,
+                    "y": 90.0,
+                    "diagonal": 45.0,
+                }[solid_transition_raster_direction]
+
+                for transition_layer_index in range(transition_layer_count):
+                    transition_angle = (
+                        transition_base_angle
+                        + transition_layer_index
+                        * solid_transition_rotation_per_layer
+                        if solid_transition_rotate_each_layer
+                        else transition_base_angle
+                    ) % 180.0
+                    transition_pattern_gcode = (
+                        slicer._generate_infill_vector_gcode(
+                            region=transition_region,
+                            infill_settings=transition_infill_settings,
+                            angle=transition_angle,
+                            line_count=solid_transition_line_count,
+                            spacing=solid_transition_line_spacing,
+                            hatch_spacing=solid_transition_hatch_spacing,
+                            infill_type=solid_transition_pattern,
+                            grid_spacing=solid_transition_grid_spacing,
+                            grid_clearance=solid_transition_grid_clearance,
+                            contour_line_count=(
+                                solid_transition_contour_line_count
+                                if solid_transition_contour_enabled else 0),
+                            allow_boundary_fallback=True,
+                            reverse_scan=False,
+                            optimize_scan_order=True,
+                            engraving_mode="engraving",
+                            engraving_acceleration=engraving_acceleration,
+                            machine_bounds=machine_bounds,
+                            preserve_vector_pattern_in_engraving=True,
+                        )
+                    )
+                    transition_output_layer = (
+                        anchor_pad_layer_count + transition_layer_index + 1)
+                    transition_infill_gcode = (
+                        f";SOLID TRANSITION PATTERN START LAYER "
+                        f"{transition_output_layer}\n"
+                        f";SOLID TRANSITION INDEX "
+                        f"{transition_layer_index + 1}/"
+                        f"{transition_layer_count}\n"
+                        f";PATTERN {solid_transition_pattern.upper()} "
+                        f"DIRECTION "
+                        f"{solid_transition_raster_direction.upper()} "
+                        f"ANGLE {transition_angle:.4f} DEG\n"
+                        f";LINES PER HATCH {solid_transition_line_count} "
+                        f"TRACK WIDTH "
+                        f"{solid_transition_track_width:.4f} mm "
+                        f"LINE SPACING "
+                        f"{solid_transition_line_spacing:.4f} mm\n"
+                        f";HATCH SPACING "
+                        f"{solid_transition_hatch_spacing:.4f} mm "
+                        f"GRID SPACING "
+                        f"{solid_transition_grid_spacing:.4f} mm "
+                        f"GRID CLEARANCE "
+                        f"{solid_transition_grid_clearance:.4f} mm\n"
+                        f"{transition_pattern_gcode}\n"
+                        f";SOLID TRANSITION PATTERN END LAYER "
+                        f"{transition_output_layer}"
+                    )
+                    if solid_transition_contour_enabled:
+                        transition_contour_body = (
+                            slicer._generate_contour_vector_gcode(
+                                region=transition_region,
+                                contour_settings=transition_contour_settings,
+                                line_count=(
+                                    solid_transition_contour_line_count),
+                                spacing=solid_transition_line_spacing,
+                                engraving_mode="engraving",
+                                engraving_acceleration=engraving_acceleration,
+                                machine_bounds=machine_bounds,
+                            )
+                        )
+                        transition_contour_gcode = (
+                            f";SOLID TRANSITION CONTOUR START LAYER "
+                            f"{transition_output_layer} "
+                            f"LINES "
+                            f"{solid_transition_contour_line_count}\n"
+                            f"{transition_contour_body}\n"
+                            f";SOLID TRANSITION CONTOUR END LAYER "
+                            f"{transition_output_layer}"
+                        )
+                    else:
+                        transition_contour_gcode = (
+                            f";SOLID TRANSITION CONTOUR DISABLED LAYER "
+                            f"{transition_output_layer}"
+                        )
+
+                    gcode_file.write(
+                        f";LAYER {transition_output_layer} SCAN MODE: "
+                        f"ENGRAVING (SOLID TRANSITION LAYER "
+                        f"{transition_layer_index + 1}/"
+                        f"{transition_layer_count})\n")
+                    transition_gcode_content = generate_gcode_for_layer(
+                        image_to_gcode_helper=slicer.image_to_gcode_helper,
+                        img_infill=None,
+                        svg_contour=None,
+                        contour_settings=transition_contour_settings,
+                        infill_settings=transition_infill_settings,
+                        z=z,
+                        layer_speed=slicing_data["layer_speed"],
+                        bounds=model_bounds,
+                        slicing_data=slicing_data,
+                        layer_index=transition_output_layer - 1,
+                        infill_gcode_override=transition_infill_gcode,
+                        contour_gcode_override=transition_contour_gcode,
+                    )
+                    z += slicing_data["layer_height"]
+                    gcode_file.write(transition_gcode_content)
+                    send_slicing_progress_to_interface(
+                        websocket_write_queue=websocket_write_queue,
+                        layer_index=transition_output_layer,
+                        total_layers=total_output_layers,
+                    )
+
             flat_surface_skin_layer_count = 0
             slanted_surface_skin_layer_count = 0
             flat_surface_skin_active_regions = []
             slanted_surface_skin_active_regions = []
+            internal_floor_support_regions = [
+                GeometryCollection() for _ in layer_regions
+            ]
+            internal_floor_support_source_layers = [
+                set() for _ in layer_regions
+            ]
+            if internal_floor_support_enabled and not solid_mode_enabled:
+                (
+                    internal_floor_support_regions,
+                    internal_floor_support_source_layers,
+                ) = slicer._internal_floor_support_regions(
+                    layer_regions,
+                    minimum_area=internal_floor_support_minimum_area,
+                )
             for i in range(len(png_files)):
                 output_layer_index = i
+                gcode_layer_index = (
+                    output_layer_index + foundation_layer_count)
                 source_layer_index = i + layer_index_offset
                 layer_engraving_mode = get_zone_scan_mode(
                     output_layer_index, slicing_data)
@@ -1772,6 +2527,124 @@ class PrusaSlicer:
                             f"{body_contour_width * 2.0:.4f} mm "
                             f"BASE LINES {contour_line_count}\n"
                             f"{contour_gcode}")
+                if (
+                    internal_floor_support_enabled
+                    and not solid_mode_enabled
+                    and i < len(internal_floor_support_regions)
+                ):
+                    floor_support_region = internal_floor_support_regions[i]
+                    if (
+                        floor_support_region is not None
+                        and not floor_support_region.is_empty
+                        and floor_support_region.area > 1e-9
+                    ):
+                        support_rotation_index = output_layer_index
+                        if internal_floor_support_grouping_enabled:
+                            support_rotation_index = (
+                                output_layer_index
+                                // internal_floor_support_group_layers)
+                        floor_support_angle = (
+                            internal_floor_support_angle
+                            + support_rotation_index
+                            * internal_floor_support_rotation_per_layer
+                        ) % 180.0
+                        floor_support_settings = dict(infill_settings)
+                        floor_support_settings["power"] = (
+                            internal_floor_support_power)
+                        floor_support_settings["speed"] = (
+                            internal_floor_support_speed)
+                        floor_support_settings["boundary_clearance"] = (
+                            internal_floor_support_boundary_clearance)
+                        slicer._validate_region_on_bed(
+                            floor_support_region, machine_bounds)
+                        floor_support_gcode = (
+                            slicer._generate_infill_vector_gcode(
+                                region=floor_support_region,
+                                infill_settings=floor_support_settings,
+                                angle=floor_support_angle,
+                                line_count=(
+                                    internal_floor_support_line_count),
+                                spacing=(
+                                    internal_floor_support_line_spacing),
+                                hatch_spacing=(
+                                    internal_floor_support_hatch_spacing),
+                                infill_type=internal_floor_support_type,
+                                grid_spacing=(
+                                    internal_floor_support_grid_spacing),
+                                grid_clearance=(
+                                    internal_floor_support_grid_clearance),
+                                contour_line_count=0,
+                                allow_boundary_fallback=True,
+                                reverse_scan=reverse_scan,
+                                optimize_scan_order=(
+                                    internal_floor_support_optimize_scan_order),
+                                engraving_mode=internal_floor_support_mode,
+                                engraving_acceleration=(
+                                    engraving_acceleration),
+                                machine_bounds=machine_bounds,
+                                hatch_exclusion_angles=[],
+                                preserve_vector_pattern_in_engraving=True,
+                            )
+                        )
+                        if (
+                            normal_transition_floor_support_enabled
+                            and solid_transition_contour_enabled
+                        ):
+                            floor_support_contour_settings = dict(
+                                contour_settings)
+                            floor_support_contour_settings["power"] = (
+                                solid_transition_contour_power)
+                            floor_support_contour_settings["speed"] = (
+                                solid_transition_contour_speed)
+                            floor_support_contour_gcode = (
+                                slicer._generate_contour_vector_gcode(
+                                    region=floor_support_region,
+                                    contour_settings=(
+                                        floor_support_contour_settings),
+                                    line_count=(
+                                        solid_transition_contour_line_count),
+                                    spacing=(
+                                        solid_transition_line_spacing),
+                                    engraving_mode="engraving",
+                                    engraving_acceleration=(
+                                        engraving_acceleration),
+                                    machine_bounds=machine_bounds,
+                                )
+                            )
+                            if floor_support_contour_gcode:
+                                floor_support_gcode = (
+                                    f"{floor_support_gcode}\n"
+                                    ";TRANSITION FLANGE SUPPORT CONTOUR "
+                                    f"START LAYER {i + 1}\n"
+                                    f"{floor_support_contour_gcode}\n"
+                                    ";TRANSITION FLANGE SUPPORT CONTOUR END"
+                                )
+                        if floor_support_gcode:
+                            source_layers = ", ".join(
+                                str(layer + 1)
+                                for layer in sorted(
+                                    internal_floor_support_source_layers[i]))
+                            min_x, min_y, max_x, max_y = (
+                                floor_support_region.bounds)
+                            infill_gcode += (
+                                "\n"
+                                f";INTERNAL FLOOR SUPPORT START LAYER "
+                                f"{i + 1}\n"
+                                f";SUPPORTS DETECTED FLOOR LAYER(S): "
+                                f"{source_layers}\n"
+                                f";INTERNAL FLOOR SUPPORT BOUNDS "
+                                f"X {min_x:.4f} to {max_x:.4f} "
+                                f"Y {min_y:.4f} to {max_y:.4f}\n"
+                                f";INTERNAL FLOOR SUPPORT MODE "
+                                f"{internal_floor_support_mode.upper()} "
+                                f"PATTERN "
+                                f"{internal_floor_support_type.upper()} "
+                                f"ANGLE {floor_support_angle:.4f} deg\n"
+                                f";TRANSITION PREPARATION DRIVEN "
+                                f"{'YES' if normal_transition_floor_support_enabled else 'NO'}\n"
+                                f"{floor_support_gcode}\n"
+                                ";INTERNAL FLOOR SUPPORT END\n"
+                            )
                 if roof_hollow_infill_enabled and not is_engraving:
                     roof_hollow_overlap_distance = (
                         roof_hollow_infill_overlap * spacing)
@@ -2347,61 +3220,173 @@ class PrusaSlicer:
                     solid_contour_settings["power"] = solid_contour_power
                     solid_contour_settings["speed"] = solid_contour_speed
                     slicer._validate_region_on_bed(region, machine_bounds)
-                    solid_pattern_region = region
-                    if solid_boundary_clearance > 1e-9:
-                        solid_pattern_region = region.buffer(
-                            -solid_boundary_clearance,
-                            join_style=2,
-                            mitre_limit=5)
-                        if not solid_pattern_region.is_valid:
-                            solid_pattern_region = solid_pattern_region.buffer(0)
+                    solid_layer_regions = [region]
+                    if solid_merge_objects_by_layer:
+                        # The combined slice has no model IDs; disconnected
+                        # polygons are the stable per-layer object boundary.
+                        disconnected_regions = [
+                            polygon
+                            for polygon in slicer._extract_polygons(region)
+                            if not polygon.is_empty and polygon.area > 1e-9
+                        ]
+                        if disconnected_regions:
+                            solid_layer_regions = sorted(
+                                disconnected_regions,
+                                key=lambda polygon: (
+                                    round(polygon.centroid.y, 6),
+                                    round(polygon.centroid.x, 6),
+                                    -polygon.area,
+                                ),
+                            )
 
-                    if is_engraving:
-                        solid_pattern_body = (
-                            slicer._generate_surface_skin_engraving_gcode(
-                                region=solid_pattern_region,
-                                infill_settings=solid_infill_settings,
-                                scanline_spacing=solid_pattern_spacing,
-                                boundary_mode="engrave",
-                                reverse_scan=bool(output_layer_index % 2),
-                                optimize_scan_order=True,
-                                engraving_acceleration=(
-                                    engraving_acceleration),
-                                raster_direction=(
-                                    solid_layer_raster_direction),
-                                machine_bounds=machine_bounds,
-                                alternate_lines=True,
-                                alternate_mode="edge-interleave",
-                            )
-                        )
+                    if solid_island_scanning_enabled:
+                        solid_line_strategy = solid_island_scan_strategy
+                    elif solid_alternate_lines:
+                        solid_line_strategy = solid_alternate_mode
                     else:
-                        solid_pattern_body = (
-                            slicer._generate_infill_vector_gcode(
-                                region=region,
-                                infill_settings=solid_infill_settings,
-                                angle=solid_layer_angle,
-                                line_count=1,
-                                spacing=solid_pattern_spacing,
-                                hatch_spacing=solid_pattern_spacing,
-                                infill_type="Lines",
-                                grid_spacing=solid_pattern_spacing,
-                                grid_clearance=0.0,
-                                contour_line_count=(
-                                    solid_contour_line_count
-                                    if solid_layer_contour_enabled else 0),
-                                allow_boundary_fallback=False,
-                                reverse_scan=bool(output_layer_index % 2),
-                                optimize_scan_order=True,
-                                engraving_mode="vectoring",
-                                engraving_acceleration=(
-                                    engraving_acceleration),
-                                machine_bounds=machine_bounds,
+                        solid_line_strategy = "normal"
+                    solid_alternate_lines_active = (
+                        solid_line_strategy != "normal")
+                    solid_alternate_mode_active = (
+                        solid_line_strategy
+                        if solid_alternate_lines_active else "two-pass")
+
+                    solid_pattern_parts = []
+                    solid_island_count = 0
+                    solid_object_count = len(solid_layer_regions)
+                    for object_index, solid_object_region in enumerate(
+                            solid_layer_regions, start=1):
+                        solid_pattern_region = solid_object_region
+                        if solid_boundary_clearance > 1e-9:
+                            solid_pattern_region = solid_object_region.buffer(
+                                -solid_boundary_clearance,
+                                join_style=2,
+                                mitre_limit=5)
+                            if not solid_pattern_region.is_valid:
+                                solid_pattern_region = (
+                                    solid_pattern_region.buffer(0))
+
+                        if is_engraving and solid_island_scanning_enabled:
+                            (
+                                island_cells,
+                                island_columns,
+                                island_rows,
+                                actual_island_width,
+                                actual_island_height,
+                            ) = slicer._solid_island_cells(
+                                solid_pattern_region, solid_island_size)
+                            island_parts = []
+                            object_island_count = len(island_cells)
+                            solid_island_count += object_island_count
+                            for island_index, island_cell in enumerate(
+                                    island_cells, start=1):
+                                island_body = (
+                                    slicer
+                                    ._generate_surface_skin_engraving_gcode(
+                                        region=island_cell["region"],
+                                        infill_settings=(
+                                            solid_infill_settings),
+                                        scanline_spacing=(
+                                            solid_pattern_spacing),
+                                        boundary_mode="engrave",
+                                        reverse_scan=bool(
+                                            (
+                                                output_layer_index
+                                                + island_index - 1
+                                            ) % 2),
+                                        optimize_scan_order=True,
+                                        engraving_acceleration=(
+                                            engraving_acceleration),
+                                        raster_direction=(
+                                            solid_layer_raster_direction),
+                                        machine_bounds=machine_bounds,
+                                        alternate_lines=(
+                                            solid_alternate_lines_active),
+                                        alternate_mode=(
+                                            solid_alternate_mode_active),
+                                    )
+                                )
+                                island_parts.append(
+                                    f";SOLID ISLAND {island_index}/"
+                                    f"{object_island_count} "
+                                    f"ROW {island_cell['row']} "
+                                    f"COLUMN {island_cell['column']} "
+                                    f"STRATEGY "
+                                    f"{solid_line_strategy.upper()} START\n"
+                                    f"{island_body}\n"
+                                    f";SOLID ISLAND {island_index}/"
+                                    f"{object_island_count} END"
+                                )
+                            solid_pattern_body = (
+                                f";SOLID ISLAND GRID "
+                                f"{island_columns}x{island_rows} "
+                                f"CELLS {object_island_count}\n"
+                                f";SOLID ISLAND REQUESTED SIZE "
+                                f"{solid_island_size:.4f} mm x "
+                                f"{solid_island_size:.4f} mm\n"
+                                f";SOLID ISLAND ACTUAL CELL SIZE "
+                                f"{actual_island_width:.4f} mm x "
+                                f"{actual_island_height:.4f} mm\n"
+                                + "\n".join(island_parts)
                             )
+                        elif is_engraving:
+                            solid_pattern_body = (
+                                slicer._generate_surface_skin_engraving_gcode(
+                                    region=solid_pattern_region,
+                                    infill_settings=solid_infill_settings,
+                                    scanline_spacing=solid_pattern_spacing,
+                                    boundary_mode="engrave",
+                                    reverse_scan=bool(output_layer_index % 2),
+                                    optimize_scan_order=True,
+                                    engraving_acceleration=(
+                                        engraving_acceleration),
+                                    raster_direction=(
+                                        solid_layer_raster_direction),
+                                    machine_bounds=machine_bounds,
+                                    alternate_lines=(
+                                        solid_alternate_lines_active),
+                                    alternate_mode=(
+                                        solid_alternate_mode_active),
+                                )
+                            )
+                        else:
+                            solid_pattern_body = (
+                                slicer._generate_infill_vector_gcode(
+                                    region=solid_object_region,
+                                    infill_settings=solid_infill_settings,
+                                    angle=solid_layer_angle,
+                                    line_count=1,
+                                    spacing=solid_pattern_spacing,
+                                    hatch_spacing=solid_pattern_spacing,
+                                    infill_type="Lines",
+                                    grid_spacing=solid_pattern_spacing,
+                                    grid_clearance=0.0,
+                                    contour_line_count=(
+                                        solid_contour_line_count
+                                        if solid_layer_contour_enabled else 0),
+                                    allow_boundary_fallback=False,
+                                    reverse_scan=bool(
+                                        output_layer_index % 2),
+                                    optimize_scan_order=True,
+                                    engraving_mode="vectoring",
+                                    engraving_acceleration=(
+                                        engraving_acceleration),
+                                    machine_bounds=machine_bounds,
+                                )
+                            )
+                        solid_pattern_parts.append(
+                            f";SOLID OBJECT {object_index}/"
+                            f"{solid_object_count} PATTERN START\n"
+                            f"{solid_pattern_body}\n"
+                            f";SOLID OBJECT {object_index}/"
+                            f"{solid_object_count} PATTERN END"
                         )
                     infill_gcode = (
-                        f";SOLID PATTERN START LAYER {i + 1} "
+                        f";SOLID PATTERN START LAYER "
+                        f"{gcode_layer_index + 1} "
                         f"STAGE {solid_stage} "
                         f"MODE {layer_engraving_mode.upper()}\n"
+                        f";SOLID OBJECT COUNT {solid_object_count}\n"
                         f";FACE CLOSURE: "
                         f"{'LINE-ONLY' if solid_face_closure_layer else 'STANDARD'}\n"
                         + (
@@ -2411,42 +3396,60 @@ class PrusaSlicer:
                         f"{solid_layer_raster_direction.upper()} "
                         f"CROSS HATCH "
                         f"{'ENABLED' if solid_cross_hatch else 'DISABLED'}\n"
-                        f";EDGE INTERLEAVE "
-                        f"{'ENABLED' if is_engraving else 'NOT APPLICABLE'}\n"
+                        f";LINE STRATEGY "
+                        f"{solid_line_strategy.upper() if is_engraving else 'NOT APPLICABLE'}\n"
+                        f";ISLAND SCANNING "
+                        f"{'ENABLED' if is_engraving and solid_island_scanning_enabled else 'DISABLED'}\n"
+                        f";SOLID ISLAND COUNT {solid_island_count}\n"
                         f";TRACK WIDTH {solid_track_width:.4f} mm "
                         f"PITCH {solid_pattern_spacing:.4f} mm "
                         f"OVERLAP {solid_pattern_overlap * 100.0:.2f}%\n"
-                        + solid_pattern_body
-                        + f"\n;SOLID PATTERN END LAYER {i + 1}"
+                        + "\n".join(solid_pattern_parts)
+                        + f"\n;SOLID PATTERN END LAYER "
+                        f"{gcode_layer_index + 1}"
                     )
                     if solid_layer_contour_enabled:
+                        solid_contour_parts = []
+                        for object_index, solid_object_region in enumerate(
+                                solid_layer_regions, start=1):
+                            solid_contour_parts.append(
+                                f";SOLID OBJECT {object_index}/"
+                                f"{solid_object_count} CONTOUR START\n"
+                                + slicer._generate_contour_vector_gcode(
+                                    region=solid_object_region,
+                                    contour_settings=solid_contour_settings,
+                                    line_count=solid_contour_line_count,
+                                    spacing=solid_track_width,
+                                    engraving_mode="vectoring",
+                                    engraving_acceleration=(
+                                        engraving_acceleration),
+                                    machine_bounds=machine_bounds,
+                                )
+                                + f"\n;SOLID OBJECT {object_index}/"
+                                f"{solid_object_count} CONTOUR END"
+                            )
                         contour_gcode = (
-                            f";SOLID CONTOUR START LAYER {i + 1} "
+                            f";SOLID CONTOUR START LAYER "
+                            f"{gcode_layer_index + 1} "
                             f"LINES {solid_contour_line_count} "
                             f"WIDTH {solid_contour_width:.4f} mm\n"
-                            + slicer._generate_contour_vector_gcode(
-                                region=region,
-                                contour_settings=solid_contour_settings,
-                                line_count=solid_contour_line_count,
-                                spacing=solid_track_width,
-                                engraving_mode="vectoring",
-                                engraving_acceleration=engraving_acceleration,
-                                machine_bounds=machine_bounds,
-                            )
-                            + f"\n;SOLID CONTOUR END LAYER {i + 1}"
+                            + "\n".join(solid_contour_parts)
+                            + f"\n;SOLID CONTOUR END LAYER "
+                            f"{gcode_layer_index + 1}"
                         )
                     elif solid_face_closure_layer:
                         contour_gcode = (
                             f";SOLID CONTOUR OMITTED FOR FACE CLOSURE "
-                            f"LAYER {i + 1}"
+                            f"LAYER {gcode_layer_index + 1}"
                         )
                     else:
                         contour_gcode = (
-                            f";SOLID CONTOUR DISABLED LAYER {i + 1}"
+                            f";SOLID CONTOUR DISABLED LAYER "
+                            f"{gcode_layer_index + 1}"
                         )
 
                 gcode_file.write(
-                        f";LAYER {i + 1} SCAN MODE: "
+                        f";LAYER {gcode_layer_index + 1} SCAN MODE: "
                     f"{layer_engraving_mode.upper()} "
                     f"(SOURCE LAYER {source_layer_index + 1})\n")
                 gcode_content = generate_gcode_for_layer(
@@ -2456,7 +3459,7 @@ class PrusaSlicer:
                     z=z, layer_speed=slicing_data["layer_speed"],
                     bounds=model_bounds,
                     slicing_data=slicing_data,
-                    layer_index=output_layer_index,
+                    layer_index=gcode_layer_index,
                     infill_gcode_override=infill_gcode,
                     contour_gcode_override=contour_gcode)
 
@@ -2464,7 +3467,8 @@ class PrusaSlicer:
                 gcode_file.write(gcode_content)
                 send_slicing_progress_to_interface(
                     websocket_write_queue=websocket_write_queue,
-                    layer_index=i + 1, total_layers=len(png_files))
+                    layer_index=gcode_layer_index + 1,
+                    total_layers=total_output_layers)
 
             if not slicing_data.get("visicut_style", False):
                 gcode_file.write(
@@ -2776,6 +3780,87 @@ class PrusaSlicer:
         if not hollow_region.is_valid:
             hollow_region = hollow_region.buffer(0)
         return hollow_region
+
+    def _internal_floor_support_regions(self, layer_regions,
+                                        minimum_area=0.1):
+        """
+        Detect material that first appears inside a previous layer's enclosed
+        hollow, then project only that footprint through connected hollow space
+        below it.
+
+        The detected floor/flange layer remains ordinary model material.
+        Generated support stops one layer below it and terminates wherever the
+        downward projection meets existing material or an open cavity.
+        """
+        region_count = len(layer_regions or [])
+        support_regions = [
+            GeometryCollection() for _ in range(region_count)
+        ]
+        support_source_layers = [set() for _ in range(region_count)]
+        if region_count < 2:
+            return support_regions, support_source_layers
+
+        cleaned_regions = []
+        hollow_regions = []
+        for region in layer_regions:
+            cleaned = region
+            if cleaned is None or cleaned.is_empty:
+                cleaned = GeometryCollection()
+            elif not cleaned.is_valid:
+                cleaned = cleaned.buffer(0)
+            cleaned_regions.append(cleaned)
+            hollow_regions.append(self._enclosed_hollow_region(cleaned))
+
+        area_threshold = max(0.0, float(minimum_area or 0.0))
+        for floor_index in range(1, region_count):
+            previous_hollow = hollow_regions[floor_index - 1]
+            current_region = cleaned_regions[floor_index]
+            if previous_hollow.is_empty or current_region.is_empty:
+                continue
+
+            newly_spanned = current_region.intersection(previous_hollow)
+            if not newly_spanned.is_valid:
+                newly_spanned = newly_spanned.buffer(0)
+            floor_parts = [
+                polygon
+                for polygon in self._extract_polygons(newly_spanned)
+                if not polygon.is_empty
+                and polygon.area + 1e-9 >= area_threshold
+            ]
+            if not floor_parts:
+                continue
+
+            active_projection = unary_union(floor_parts)
+            for support_index in range(floor_index - 1, -1, -1):
+                hollow = hollow_regions[support_index]
+                if hollow.is_empty or active_projection.is_empty:
+                    break
+                active_projection = active_projection.intersection(hollow)
+                if not active_projection.is_valid:
+                    active_projection = active_projection.buffer(0)
+                if active_projection.is_empty:
+                    break
+                projected_parts = [
+                    polygon
+                    for polygon in self._extract_polygons(active_projection)
+                    if not polygon.is_empty
+                    and polygon.area + 1e-9 >= area_threshold
+                ]
+                if not projected_parts:
+                    break
+                active_projection = unary_union(projected_parts)
+                existing_support = support_regions[support_index]
+                support_regions[support_index] = (
+                    active_projection
+                    if existing_support.is_empty
+                    else unary_union(
+                        [existing_support, active_projection]))
+                if not support_regions[support_index].is_valid:
+                    support_regions[support_index] = (
+                        support_regions[support_index].buffer(0))
+                support_source_layers[support_index].add(floor_index)
+
+        return support_regions, support_source_layers
 
     def _roof_hollow_infill_region(self, region, overlap_distance=0.0):
         """
@@ -3848,6 +4933,7 @@ class PrusaSlicer:
             contour_spacing=0.2, vector_contour_settings=None,
             reverse_scan=False, optimize_scan_order=True,
             engraving_acceleration=500, raster_direction="x",
+            raster_angle=None,
             machine_bounds=None, alternate_lines=False,
             alternate_mode="two-pass"):
         if region is None or region.is_empty:
@@ -3882,6 +4968,7 @@ class PrusaSlicer:
                 optimize_scan_order=optimize_scan_order,
                 engraving_acceleration=engraving_acceleration,
                 raster_direction=raster_direction,
+                raster_angle=raster_angle,
                 machine_bounds=machine_bounds,
                 alternate_lines=alternate_lines,
                 alternate_mode=alternate_mode,
@@ -3921,6 +5008,7 @@ class PrusaSlicer:
                 optimize_scan_order=optimize_scan_order,
                 engraving_acceleration=engraving_acceleration,
                 raster_direction=raster_direction,
+                raster_angle=raster_angle,
                 machine_bounds=machine_bounds,
                 alternate_lines=alternate_lines,
                 alternate_mode=alternate_mode,
@@ -3981,6 +5069,7 @@ class PrusaSlicer:
                 optimize_scan_order=optimize_scan_order,
                 engraving_acceleration=engraving_acceleration,
                 raster_direction=raster_direction,
+                raster_angle=raster_angle,
                 machine_bounds=machine_bounds,
                 alternate_lines=alternate_lines,
                 alternate_mode=alternate_mode,
@@ -4022,6 +5111,7 @@ class PrusaSlicer:
             optimize_scan_order=optimize_scan_order,
             engraving_acceleration=engraving_acceleration,
             raster_direction=raster_direction,
+            raster_angle=raster_angle,
             machine_bounds=machine_bounds,
             alternate_lines=alternate_lines,
             alternate_mode=alternate_mode,
@@ -4037,6 +5127,53 @@ class PrusaSlicer:
             f"{skin_gcode}\n"
             ";SURFACE SKIN FLAT ROOF RASTER ROWS END"
         )
+
+    def _solid_island_cells(self, region, requested_size):
+        """Fit whole, equal cells to a solid region and clip them to it."""
+        if region is None or region.is_empty:
+            return [], 0, 0, 0.0, 0.0
+
+        requested_size = max(float(requested_size), 1e-6)
+        min_x, min_y, max_x, max_y = region.bounds
+        width = max(0.0, max_x - min_x)
+        height = max(0.0, max_y - min_y)
+        if width <= 1e-9 or height <= 1e-9:
+            return [], 0, 0, 0.0, 0.0
+
+        # Use complete requested-size cells as the count, then distribute the
+        # full span evenly. For example, 8 / 3 produces two 4 mm cells.
+        columns = max(
+            1, int(np.floor((width + 1e-9) / requested_size)))
+        rows = max(
+            1, int(np.floor((height + 1e-9) / requested_size)))
+        actual_width = width / columns
+        actual_height = height / rows
+        cells = []
+
+        for row_index in range(rows):
+            column_indices = list(range(columns))
+            if row_index % 2 == 1:
+                column_indices.reverse()
+            y0 = min_y + row_index * actual_height
+            y1 = max_y if row_index == rows - 1 else y0 + actual_height
+            for column_index in column_indices:
+                x0 = min_x + column_index * actual_width
+                x1 = (
+                    max_x
+                    if column_index == columns - 1
+                    else x0 + actual_width)
+                clipped = region.intersection(box(x0, y0, x1, y1))
+                if not clipped.is_valid:
+                    clipped = clipped.buffer(0)
+                if clipped.is_empty or clipped.area <= 1e-9:
+                    continue
+                cells.append({
+                    "region": clipped,
+                    "row": row_index + 1,
+                    "column": column_index + 1,
+                })
+
+        return cells, columns, rows, actual_width, actual_height
 
     def _extract_polygons(self, geometry):
         if geometry is None or geometry.is_empty:
@@ -4114,11 +5251,15 @@ class PrusaSlicer:
                                       machine_bounds=None,
                                       hatch_exclusion_angles=None,
                                       require_complete_bundle=None,
-                                      hatch_phase_fraction=0.0):
+                                      hatch_phase_fraction=0.0,
+                                      preserve_vector_pattern_in_engraving=False):
         if region is None or region.is_empty:
             return ""
 
-        if str(engraving_mode).lower() == "engraving":
+        if (
+            str(engraving_mode).lower() == "engraving"
+            and not preserve_vector_pattern_in_engraving
+        ):
             scanline_pitch = max(
                 float(hatch_spacing) if hatch_spacing and hatch_spacing > 0
                 else float(spacing),
@@ -4485,7 +5626,7 @@ class PrusaSlicer:
             self, shell_region, grid_region, infill_settings,
             scanline_spacing, reverse_scan=False,
             optimize_scan_order=True, engraving_acceleration=500,
-            raster_direction="x",
+            raster_direction="x", raster_angle=None,
             machine_bounds=None, alternate_lines=False,
             alternate_mode="two-pass", comment_label="ENGRAVING"):
         """
@@ -4504,11 +5645,28 @@ class PrusaSlicer:
         combined_region = unary_union(geometries)
         direction = str(raster_direction or "x").strip().lower()
         pitch = max(float(scanline_spacing), 1e-6)
-        if direction in ("diagonal", "anti-diagonal"):
-            raster_angle = 45.0 if direction == "diagonal" else 135.0
+        if raster_angle is not None:
+            active_raster_angle = float(raster_angle) % 180.0
             raster_lines = self._angled_hatch_lines(
                 combined_region,
-                raster_angle,
+                active_raster_angle,
+                pitch,
+                1,
+                pitch,
+                require_complete_bundle=False)
+            raster_lines = self._order_hatch_lines(
+                raster_lines,
+                reverse_scan,
+                optimize_scan_order)
+            rows = [(index, [segment])
+                    for index, segment in enumerate(raster_lines)]
+            scan_label = f"ANGLE {active_raster_angle:.4f} DEG"
+        elif direction in ("diagonal", "anti-diagonal"):
+            active_raster_angle = (
+                45.0 if direction == "diagonal" else 135.0)
+            raster_lines = self._angled_hatch_lines(
+                combined_region,
+                active_raster_angle,
                 pitch,
                 1,
                 pitch,

@@ -221,7 +221,9 @@ class JobProjectData(BaseModel):
     """Internal slicer project data stored beside a generated G-code job."""
 
     version: int = 1
+    sourceFilename: Optional[str] = None
     modelFile: str
+    models: Optional[List[Dict[str, Any]]] = None
     slicingSettings: Dict[str, Any]
     printHeightLowerLimit: Optional[float] = None
     printHeightLimit: Optional[float] = None

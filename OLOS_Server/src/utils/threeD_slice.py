@@ -4,6 +4,10 @@ including Slic3r, PrusaSlicer, and PySLM. It selects the appropriate slicer base
 provided slicing settings and delegates the slicing process accordingly.
 """
 
+import os
+import re
+import tempfile
+
 from core.constants import CoreConstants as constants
 from utils.media_convertor_helper import MediaConvertorHelper
 from utils.threeD_printing_slice.src.slic3r import Slic3r
@@ -47,6 +51,12 @@ def _extract_zone_settings(slicing_settings):
         out['powder_feed'] = -abs(float(slicing_settings.reservoirLiftPerLayer))
     if getattr(slicing_settings, 'recoaterFeedRate', None) is not None:
         out['recoater_feed'] = int(slicing_settings.recoaterFeedRate)
+    add('recoaterReturnBedDropEnabled',
+        'recoater_return_bed_drop_enabled', bool)
+    add('recoaterReturnBedDropDistance',
+        'recoater_return_bed_drop_distance', float)
+    add('recoaterReturnBedFeedRate',
+        'recoater_return_bed_feed_rate', int)
     add('bedOffsetX', 'bed_offset_x', float)
     add('bedOffsetY', 'bed_offset_y', float)
 
@@ -95,16 +105,43 @@ class ThreeDSlice:
             recoater_feed_rate = getattr(settings, 'recoaterFeedRate', None)
             if recoater_feed_rate is not None:
                 settings.prusaSettings.recoaterFeedRate = recoater_feed_rate
-            slicer._use_prusa_slicer(
-                model_tmp_file_path=model_tmp_file_path,
-                slice_result_tmp_file_path=slice_result_tmp_file_path,
-                model_size=slice_data.modelSize,
-                slicing_settings=settings.prusaSettings,
-                websocket_write_queue=websocket_write_queue,
-                print_height_lower_limit=getattr(
-                    slice_data, 'printHeightLowerLimit', None),
-                print_height_limit=getattr(
-                    slice_data, 'printHeightLimit', None))
+            for field in (
+                'recoaterReturnBedDropEnabled',
+                'recoaterReturnBedDropDistance',
+                'recoaterReturnBedFeedRate',
+            ):
+                value = getattr(settings, field, None)
+                if value is not None:
+                    setattr(settings.prusaSettings, field, value)
+            solid_objects = getattr(slice_data, 'solidObjects', None) or []
+            if (
+                bool(getattr(
+                    settings.prusaSettings, 'solidModeEnabled', False))
+                and bool(getattr(
+                    settings.prusaSettings,
+                    'solidMergeObjectsByLayer', True))
+                and solid_objects
+            ):
+                slicer._use_prusa_slicer_objects(
+                    solid_objects=solid_objects,
+                    slice_result_tmp_file_path=slice_result_tmp_file_path,
+                    shared_settings=settings.prusaSettings,
+                    websocket_write_queue=websocket_write_queue,
+                    print_height_lower_limit=getattr(
+                        slice_data, 'printHeightLowerLimit', None),
+                    print_height_limit=getattr(
+                        slice_data, 'printHeightLimit', None))
+            else:
+                slicer._use_prusa_slicer(
+                    model_tmp_file_path=model_tmp_file_path,
+                    slice_result_tmp_file_path=slice_result_tmp_file_path,
+                    model_size=slice_data.modelSize,
+                    slicing_settings=settings.prusaSettings,
+                    websocket_write_queue=websocket_write_queue,
+                    print_height_lower_limit=getattr(
+                        slice_data, 'printHeightLowerLimit', None),
+                    print_height_limit=getattr(
+                        slice_data, 'printHeightLimit', None))
 
         elif settings.slicingLib == constants.SLICING_LIBRARIES['PYSLM']:
             slicer._use_pyslm_lib(
@@ -174,6 +211,78 @@ class ThreeDSlice:
             'gcode_file_path': slice_result_tmp_file_path,
             'model_size': model_size,
             'solid_mode_enabled': solid_mode_enabled,
+            'solid_merge_objects_by_layer': bool(getattr(
+                slicing_settings, 'solidMergeObjectsByLayer', True)),
+            'solid_anchor_pad_enabled': bool(getattr(
+                slicing_settings, 'solidAnchorPadEnabled', False)),
+            'solid_anchor_pad_layers': max(1, int(getattr(
+                slicing_settings, 'solidAnchorPadLayers', 1) or 1)),
+            'solid_anchor_pad_size': float(getattr(
+                slicing_settings, 'solidAnchorPadSize', 20) or 20),
+            'solid_anchor_pad_power': float(getattr(
+                slicing_settings, 'solidAnchorPadPower', 50) or 0),
+            'solid_anchor_pad_speed': float(getattr(
+                slicing_settings, 'solidAnchorPadSpeed', 3000) or 3000),
+            'solid_anchor_pad_line_overlap': float(getattr(
+                slicing_settings,
+                'solidAnchorPadLineOverlap', 0) or 0) / 100.0,
+            'solid_anchor_pad_rotate_each_layer': bool(getattr(
+                slicing_settings,
+                'solidAnchorPadRotateEachLayer', False)),
+            'solid_anchor_pad_rotation_per_layer': float(getattr(
+                slicing_settings,
+                'solidAnchorPadRotationPerLayer', 90) or 0),
+            'solid_transition_enabled': bool(getattr(
+                slicing_settings, 'solidTransitionEnabled', False)),
+            'solid_transition_layers': max(1, int(getattr(
+                slicing_settings, 'solidTransitionLayers', 1) or 1)),
+            'solid_transition_pattern': str(getattr(
+                slicing_settings, 'solidTransitionPattern', 'lines')
+                or 'lines'),
+            'solid_transition_power': float(getattr(
+                slicing_settings, 'solidTransitionPower', 50) or 0),
+            'solid_transition_speed': float(getattr(
+                slicing_settings, 'solidTransitionSpeed', 3000) or 3000),
+            'solid_transition_track_width': float(getattr(
+                slicing_settings, 'solidTransitionTrackWidth', 0.2) or 0.2),
+            'solid_transition_line_overlap': float(getattr(
+                slicing_settings,
+                'solidTransitionLineOverlap', 0) or 0) / 100.0,
+            'solid_transition_line_count': max(1, int(getattr(
+                slicing_settings, 'solidTransitionLineCount', 1) or 1)),
+            'solid_transition_hatch_spacing': float(getattr(
+                slicing_settings,
+                'solidTransitionHatchSpacing', 1) or 1),
+            'solid_transition_grid_spacing': float(getattr(
+                slicing_settings,
+                'solidTransitionGridSpacing', 1) or 1),
+            'solid_transition_grid_clearance': max(0.0, float(getattr(
+                slicing_settings,
+                'solidTransitionGridClearance', 0.2) or 0)),
+            'solid_transition_raster_direction': str(getattr(
+                slicing_settings, 'solidTransitionRasterDirection', 'x')
+                or 'x'),
+            'solid_transition_rotate_each_layer': bool(getattr(
+                slicing_settings,
+                'solidTransitionRotateEachLayer', False)),
+            'solid_transition_rotation_per_layer': float(getattr(
+                slicing_settings,
+                'solidTransitionRotationPerLayer', 90) or 0),
+            'solid_transition_contour_enabled': bool(getattr(
+                slicing_settings,
+                'solidTransitionContourEnabled', True)),
+            'solid_transition_contour_power': float(getattr(
+                slicing_settings,
+                'solidTransitionContourPower', 50) or 0),
+            'solid_transition_contour_speed': float(getattr(
+                slicing_settings,
+                'solidTransitionContourSpeed', 3000) or 3000),
+            'solid_transition_contour_line_count': max(1, int(getattr(
+                slicing_settings,
+                'solidTransitionContourLineCount', 1) or 1)),
+            'solid_transition_contour_overlap': float(getattr(
+                slicing_settings,
+                'solidTransitionContourOverlap', 0) or 0) / 100.0,
             'solid_track_width': float(getattr(
                 slicing_settings, 'solidTrackWidth', 0.2) or 0.2),
             'solid_close_top_bottom_enabled': bool(getattr(
@@ -218,6 +327,20 @@ class ThreeDSlice:
                 slicing_settings, 'solidRasterDirection', 'x') or 'x'),
             'solid_cross_hatch': bool(getattr(
                 slicing_settings, 'solidCrossHatch', False)),
+            'solid_alternate_lines': bool(getattr(
+                slicing_settings, 'solidAlternateLines', True)),
+            'solid_alternate_mode': str(getattr(
+                slicing_settings,
+                'solidAlternateMode', 'edge-interleave')
+                or 'edge-interleave'),
+            'solid_island_scanning_enabled': bool(getattr(
+                slicing_settings, 'solidIslandScanningEnabled', False)),
+            'solid_island_size': float(getattr(
+                slicing_settings, 'solidIslandSize', 3) or 3),
+            'solid_island_scan_strategy': str(getattr(
+                slicing_settings,
+                'solidIslandScanStrategy', 'edge-interleave')
+                or 'edge-interleave'),
             'solid_power': float(getattr(
                 slicing_settings, 'solidPower', 50) or 0),
             'solid_speed': float(getattr(
@@ -388,6 +511,60 @@ class ThreeDSlice:
             'roof_hollow_infill_overlap': float(getattr(
                 slicing_settings, 'roofHollowInfillOverlap',
                 getattr(slicing_settings, 'contourInfillOverlap', 15)) or 0) / 100.0,
+            'internal_floor_support_enabled': bool(getattr(
+                slicing_settings, 'internalFloorSupportEnabled', False)),
+            'internal_floor_support_mode': str(getattr(
+                slicing_settings, 'internalFloorSupportMode', 'vectoring')
+                or 'vectoring'),
+            'internal_floor_support_type': str(getattr(
+                slicing_settings, 'internalFloorSupportType', 'Lines')
+                or 'Lines'),
+            'internal_floor_support_power': float(getattr(
+                slicing_settings, 'internalFloorSupportPower',
+                getattr(slicing_settings, 'infillPower', 50)) or 0),
+            'internal_floor_support_speed': float(getattr(
+                slicing_settings, 'internalFloorSupportSpeed',
+                getattr(slicing_settings, 'infillSpeed', 3000)) or 3000),
+            'internal_floor_support_track_width': float(getattr(
+                slicing_settings, 'internalFloorSupportTrackWidth',
+                getattr(slicing_settings, 'nominalVectorTrackWidth', 0.2))
+                or 0.2),
+            'internal_floor_support_line_overlap': float(getattr(
+                slicing_settings, 'internalFloorSupportLineOverlap', 0)
+                or 0) / 100.0,
+            'internal_floor_support_line_count': max(1, int(getattr(
+                slicing_settings, 'internalFloorSupportLineCount',
+                getattr(slicing_settings, 'infillLineCount', 3)) or 3)),
+            'internal_floor_support_hatch_spacing': float(getattr(
+                slicing_settings, 'internalFloorSupportHatchSpacing',
+                getattr(slicing_settings, 'infillHatchSpacing', 1)) or 1),
+            'internal_floor_support_grid_spacing': float(getattr(
+                slicing_settings, 'internalFloorSupportGridSpacing',
+                getattr(slicing_settings, 'gridSpacing', 2)) or 2),
+            'internal_floor_support_grid_clearance': float(getattr(
+                slicing_settings, 'internalFloorSupportGridClearance',
+                getattr(slicing_settings, 'gridClearance', 0.2)) or 0),
+            'internal_floor_support_angle': float(getattr(
+                slicing_settings, 'internalFloorSupportAngle',
+                getattr(slicing_settings, 'infillAngle', 45)) or 0),
+            'internal_floor_support_rotation_per_layer': float(getattr(
+                slicing_settings, 'internalFloorSupportRotationPerLayer',
+                getattr(slicing_settings, 'hatchRotationPerLayer', 67)) or 0),
+            'internal_floor_support_grouping_enabled': bool(getattr(
+                slicing_settings, 'internalFloorSupportGroupingEnabled',
+                False)),
+            'internal_floor_support_group_layers': max(1, int(getattr(
+                slicing_settings, 'internalFloorSupportGroupLayers', 1)
+                or 1)),
+            'internal_floor_support_boundary_clearance': float(getattr(
+                slicing_settings, 'internalFloorSupportBoundaryClearance', 0)
+                or 0),
+            'internal_floor_support_minimum_area': float(getattr(
+                slicing_settings, 'internalFloorSupportMinimumArea', 0.1)
+                or 0),
+            'internal_floor_support_optimize_scan_order': bool(getattr(
+                slicing_settings, 'internalFloorSupportOptimizeScanOrder',
+                True)),
             'variable_grid_infill_enabled': bool(getattr(
                 slicing_settings, 'variableGridInfillEnabled', False)),
             'variable_grid_target': str(getattr(
@@ -572,6 +749,271 @@ class ThreeDSlice:
 
         PrusaSlicer.slice_model(
             slicing_data=prusa_slicer_data, websocket_write_queue=websocket_write_queue)
+
+    def _use_prusa_slicer_objects(
+            self, solid_objects, slice_result_tmp_file_path, shared_settings,
+            websocket_write_queue, print_height_lower_limit=None,
+            print_height_limit=None):
+        """Slice solid models independently and combine them by physical layer."""
+        generated_objects = []
+        temporary_paths = []
+        shared_fields = (
+            'solidModeEnabled',
+            'solidMergeObjectsByLayer',
+            'layerHeight',
+            'layerSpeed',
+            'noRoutineFirstLayers',
+            'reservoirLiftPerLayer',
+            'recoaterFeedRate',
+            'recoaterReturnBedDropEnabled',
+            'recoaterReturnBedDropDistance',
+            'recoaterReturnBedFeedRate',
+            'bedOffsetX',
+            'bedOffsetY',
+            'engravingAcceleration',
+        )
+
+        try:
+            for solid_object in solid_objects:
+                model_fd, model_path = tempfile.mkstemp(suffix='.stl')
+                output_fd, output_path = tempfile.mkstemp(suffix='.nc')
+                os.close(model_fd)
+                os.close(output_fd)
+                temporary_paths.extend((model_path, output_path))
+
+                model = MediaConvertorHelper.decode_base64_to_binary(
+                    solid_object.modelFile)
+                with open(model_path, mode='wb') as model_file:
+                    model_file.write(model)
+
+                object_settings = solid_object.prusaSettings.copy(deep=True)
+                for field in shared_fields:
+                    if hasattr(shared_settings, field):
+                        setattr(
+                            object_settings, field,
+                            getattr(shared_settings, field))
+                object_settings.solidModeEnabled = True
+                object_settings.solidMergeObjectsByLayer = False
+
+                self._use_prusa_slicer(
+                    model_tmp_file_path=model_path,
+                    slice_result_tmp_file_path=output_path,
+                    model_size=solid_object.modelSize,
+                    slicing_settings=object_settings,
+                    websocket_write_queue=websocket_write_queue,
+                    print_height_lower_limit=print_height_lower_limit,
+                    print_height_limit=print_height_limit)
+
+                with open(output_path, mode='r', encoding='utf-8') as gcode:
+                    generated_objects.append({
+                        'id': solid_object.id,
+                        'name': solid_object.name,
+                        'offset_x': float(solid_object.offsetX),
+                        'offset_y': float(solid_object.offsetY),
+                        'size_x': float(solid_object.modelSize.x),
+                        'size_y': float(solid_object.modelSize.y),
+                        'size_z': float(solid_object.modelSize.z),
+                        'gcode': gcode.read(),
+                    })
+
+            merged_gcode = self._merge_solid_object_gcode(generated_objects)
+            with open(
+                    slice_result_tmp_file_path, mode='w',
+                    encoding='utf-8') as merged_file:
+                merged_file.write(merged_gcode)
+        finally:
+            for path in temporary_paths:
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
+
+    _LAYER_MARKER = re.compile(
+        r'(?m)^;LAYER (?P<layer>\d+) SCAN MODE:[^\r\n]*(?:\r?\n|$)')
+    _MOTION_LINE = re.compile(r'^(?P<command>G0?0|G0?1)(?P<body>.*)$')
+    _AXIS_VALUE = re.compile(
+        r'(?P<axis>[XY])(?P<value>-?(?:\d+(?:\.\d*)?|\.\d+))',
+        re.IGNORECASE)
+    _SOLID_SETTINGS_BLOCK = re.compile(
+        r'(?ms)^;SOLID OBJECT MODE: ENABLED\r?\n'
+        r'.*?(?=^;SURFACE SOLID SKIN:)')
+
+    @classmethod
+    def _split_gcode_layers(cls, gcode):
+        markers = list(cls._LAYER_MARKER.finditer(gcode))
+        if not markers:
+            return gcode, {}
+
+        header = gcode[:markers[0].start()]
+        layers = {}
+        for index, marker in enumerate(markers):
+            end = (
+                markers[index + 1].start()
+                if index + 1 < len(markers)
+                else len(gcode)
+            )
+            layers[int(marker.group('layer'))] = gcode[marker.start():end]
+        return header, layers
+
+    @staticmethod
+    def _scan_start_index(layer_block):
+        infill_index = layer_block.find('; infill')
+        if infill_index < 0:
+            return 0
+
+        coordinate_resets = list(re.finditer(
+            r'(?m)^G92\s*X[^\r\n]*Y[^\r\n]*(?:\r?\n|$)',
+            layer_block[:infill_index]))
+        if coordinate_resets:
+            return coordinate_resets[-1].start()
+
+        scan_moves = list(re.finditer(
+            r'(?m)^G0?0\s+X[^\r\n]*Y[^\r\n]*(?:\r?\n|$)',
+            layer_block[:infill_index]))
+        return scan_moves[-1].start() if scan_moves else 0
+
+    @staticmethod
+    def _gcode_comment_text(value):
+        return str(value).replace('\r', ' ').replace('\n', ' ').strip()
+
+    @classmethod
+    def _solid_object_settings_comments(cls, parsed_object, index, count):
+        name = cls._gcode_comment_text(parsed_object['name'])
+        object_id = cls._gcode_comment_text(parsed_object['id'])
+        settings_match = cls._SOLID_SETTINGS_BLOCK.search(
+            parsed_object['header'])
+        settings_lines = []
+        if settings_match:
+            settings_lines = [
+                line for line in settings_match.group().splitlines()
+                if line.startswith(';SOLID ')
+                and not line.startswith(';SOLID OBJECT MODE:')
+                and not line.startswith(';SOLID MERGE OBJECTS BY LAYER:')
+            ]
+
+        comments = [
+            ';------------------------------------------------------------\n',
+            f';SOLID MODEL {index}/{count}: {name}\n',
+            f';{name} - SETTINGS USED:\n',
+            f';OBJECT ID: {object_id}\n',
+            (
+                f";BED OFFSET: X{parsed_object['offset_x']:.4f} mm "
+                f"Y{parsed_object['offset_y']:.4f} mm\n"
+            ),
+            (
+                f";MODEL SIZE: X{parsed_object['size_x']:.4f} mm "
+                f"Y{parsed_object['size_y']:.4f} mm "
+                f"Z{parsed_object['size_z']:.4f} mm\n"
+            ),
+        ]
+        comments.extend(f';  {line[1:]}\n' for line in settings_lines)
+        comments.extend([
+            f';END SETTINGS FOR: {name}\n',
+            ';------------------------------------------------------------\n',
+        ])
+        return ''.join(comments)
+
+    @classmethod
+    def _translate_layer_scan(cls, layer_block, offset_x, offset_y):
+        if not offset_x and not offset_y:
+            return layer_block
+
+        infill_index = layer_block.find('; infill')
+        if infill_index < 0:
+            return layer_block
+
+        lines = layer_block.splitlines(keepends=True)
+        infill_line = next(
+            (index for index, line in enumerate(lines)
+             if '; infill' in line),
+            -1)
+        if infill_line < 0:
+            return layer_block
+
+        motion_lines = [
+            index for index in range(infill_line + 1, len(lines))
+            if cls._MOTION_LINE.match(lines[index].rstrip('\r\n'))
+        ]
+        if not motion_lines:
+            return layer_block
+
+        # The final move parks the scan head and must remain machine-relative.
+        scan_motion_lines = set(motion_lines[:-1])
+        for index in scan_motion_lines:
+            line_ending = (
+                '\r\n' if lines[index].endswith('\r\n')
+                else '\n' if lines[index].endswith('\n')
+                else ''
+            )
+            command = lines[index][:-len(line_ending)] if line_ending else lines[index]
+
+            def translate_axis(match):
+                axis = match.group('axis').upper()
+                offset = offset_x if axis == 'X' else offset_y
+                value = float(match.group('value')) + offset
+                return f'{axis}{value:.4f}'
+
+            lines[index] = cls._AXIS_VALUE.sub(
+                translate_axis, command) + line_ending
+
+        return ''.join(lines)
+
+    @classmethod
+    def _merge_solid_object_gcode(cls, generated_objects):
+        if not generated_objects:
+            return ''
+
+        parsed_objects = []
+        for generated_object in generated_objects:
+            header, layers = cls._split_gcode_layers(
+                generated_object['gcode'])
+            translated_layers = {
+                number: cls._translate_layer_scan(
+                    block,
+                    generated_object['offset_x'],
+                    generated_object['offset_y'])
+                for number, block in layers.items()
+            }
+            parsed_objects.append({
+                **generated_object,
+                'header': header,
+                'layers': translated_layers,
+            })
+
+        merged_header = re.sub(
+            r'(?m)^;SOLID MERGE OBJECTS BY LAYER:\s*(?:ENABLED|DISABLED)\s*$',
+            ';SOLID MERGE OBJECTS BY LAYER: ENABLED',
+            parsed_objects[0]['header'])
+        output = [merged_header]
+        output.append(
+            f";SOLID PER-OBJECT PROFILES: {len(parsed_objects)}\n")
+        for index, parsed_object in enumerate(parsed_objects, start=1):
+            output.append(cls._solid_object_settings_comments(
+                parsed_object, index, len(parsed_objects)))
+
+        layer_numbers = sorted({
+            layer_number
+            for parsed_object in parsed_objects
+            for layer_number in parsed_object['layers']
+        })
+        for layer_number in layer_numbers:
+            active_objects = [
+                parsed_object for parsed_object in parsed_objects
+                if layer_number in parsed_object['layers']
+            ]
+            if not active_objects:
+                continue
+
+            output.append(active_objects[0]['layers'][layer_number])
+            for parsed_object in active_objects[1:]:
+                layer_block = parsed_object['layers'][layer_number]
+                scan_start = cls._scan_start_index(layer_block)
+                output.append(
+                    f"\n;SOLID OBJECT: {parsed_object['name']} "
+                    f"ID {parsed_object['id']}\n")
+                output.append(layer_block[scan_start:])
+
+        return ''.join(output).rstrip() + '\n'
 
     def _use_pyslm_lib(self, model_tmp_file_path, slice_result_tmp_file_path, model_size, slicing_settings, websocket_write_queue, engraving_mode='vectoring'):
         """

@@ -8,6 +8,7 @@
     :columns="columns"
     :dense="$q.screen.lt.md"
     :filter="filter"
+    v-model:pagination="pagination"
     virtual-scroll
     :virtual-scroll-item-size="10"
     :virtual-scroll-sticky-size-start="10"
@@ -16,6 +17,22 @@
     style="max-height: 50vh"
     :loading="filesListData === undefined"
   >
+    <template v-slot:top-left>
+      <div class="row items-center q-gutter-sm">
+        <span class="text-weight-medium">Sort by</span>
+        <q-btn-toggle
+          v-model="sortMode"
+          dense
+          unelevated
+          no-caps
+          toggle-color="primary"
+          color="grey-3"
+          text-color="grey-9"
+          :options="sortOptions"
+          aria-label="Sort loaded jobs"
+        />
+      </div>
+    </template>
     <template v-slot:top-right>
       <q-input
         ref="searchInputElement"
@@ -78,7 +95,7 @@ import { storeToRefs } from 'pinia';
 import { useJobsFilesManagementStore } from 'src/stores/jobs-files-management';
 import { useUSBMonitorStore } from 'src/stores/usb-monitor';
 import { QTableProps, useQuasar, QInput } from 'quasar';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { showNotifyMessage } from 'src/services/notify.messages.service';
 import { Constants } from 'src/constants';
 import { useGcodePreviewStore } from 'src/stores/gcode-preview';
@@ -106,7 +123,7 @@ const columns: QTableProps['columns'] = [
     align: 'center',
     sortable: true,
     required: false,
-    sort: (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+    sort: (a, b) => parseJobDate(a) - parseJobDate(b),
     field: (row) => row.date,
   },
   {
@@ -135,6 +152,42 @@ const columns: QTableProps['columns'] = [
   },
 ];
 
+type JobSortMode = 'name' | 'date';
+
+const MONTHS: Record<string, number> = {
+  January: 0,
+  February: 1,
+  March: 2,
+  April: 3,
+  May: 4,
+  June: 5,
+  July: 6,
+  August: 7,
+  September: 8,
+  October: 9,
+  November: 10,
+  December: 11,
+};
+
+const parseJobDate = (value: string): number => {
+  const match = value.match(
+    /^(\d{1,2}) ([A-Za-z]+) (\d{4}) (\d{2}):(\d{2}):(\d{2})$/
+  );
+
+  if (!match || MONTHS[match[2]] === undefined) {
+    return 0;
+  }
+
+  return new Date(
+    Number(match[3]),
+    MONTHS[match[2]],
+    Number(match[1]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6])
+  ).getTime();
+};
+
 // Use Quasar's hook to access its plugins.
 const $q = useQuasar();
 
@@ -143,6 +196,26 @@ const $q = useQuasar();
  */
 const filter = ref<string>('');
 const searchInputElement = ref<QInput | null>(null);
+const sortMode = ref<JobSortMode>('date');
+const sortOptions = [
+  { label: 'Name', value: 'name' },
+  { label: 'Date', value: 'date' },
+];
+const pagination = ref({
+  sortBy: 'date',
+  descending: true,
+  page: 1,
+  rowsPerPage: 0,
+});
+
+watch(sortMode, (mode) => {
+  pagination.value = {
+    ...pagination.value,
+    sortBy: mode === 'date' ? 'date' : 'jobs',
+    descending: mode === 'date',
+    page: 1,
+  };
+});
 
 // Access Pinia stores for job files, G-code preview, USB monitoring, and virtual keyboard.
 const jobManagerStore = useJobsFilesManagementStore();

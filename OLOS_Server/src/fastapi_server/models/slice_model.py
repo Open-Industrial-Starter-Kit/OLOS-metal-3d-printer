@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 
 class SlicingProfile(BaseModel):
@@ -99,6 +99,10 @@ class ZoneExposureSettings(BaseModel):
 
     noRoutineFirstLayers: Optional[float] = None
     reservoirLiftPerLayer: Optional[float] = None
+    recoaterFeedRate: Optional[float] = 3000
+    recoaterReturnBedDropEnabled: Optional[bool] = False
+    recoaterReturnBedDropDistance: Optional[float] = Field(default=0.2, gt=0)
+    recoaterReturnBedFeedRate: Optional[float] = Field(default=50, gt=0)
     bedOffsetX: Optional[float] = None
     bedOffsetY: Optional[float] = None
 
@@ -178,6 +182,41 @@ class PrusaSlicerSettings(ZoneExposureSettings):
     """
 
     solidModeEnabled: bool = False
+    solidMergeObjectsByLayer: bool = True
+    solidAnchorPadEnabled: bool = False
+    solidAnchorPadLayers: int = Field(default=1, ge=1)
+    solidAnchorPadSize: float = Field(default=20, gt=0)
+    solidAnchorPadPower: float = Field(default=50, ge=0, le=100)
+    solidAnchorPadSpeed: float = Field(default=3000, gt=0)
+    solidAnchorPadLineOverlap: float = Field(
+        default=0, ge=-100, le=95)
+    solidAnchorPadRotateEachLayer: bool = False
+    solidAnchorPadRotationPerLayer: float = Field(
+        default=90, ge=-180, le=180)
+    solidTransitionEnabled: bool = False
+    solidTransitionLayers: int = Field(default=1, ge=1, le=1000)
+    solidTransitionPattern: Literal["lines", "grid"] = "lines"
+    solidTransitionPower: float = Field(default=50, ge=0, le=100)
+    solidTransitionSpeed: float = Field(default=3000, gt=0)
+    solidTransitionTrackWidth: float = Field(default=0.2, gt=0)
+    solidTransitionLineOverlap: float = Field(
+        default=0, ge=-100, le=95)
+    solidTransitionLineCount: int = Field(default=1, ge=1, le=25)
+    solidTransitionHatchSpacing: float = Field(default=1, gt=0)
+    solidTransitionGridSpacing: float = Field(default=1, gt=0)
+    solidTransitionGridClearance: float = Field(default=0.2, ge=0)
+    solidTransitionRasterDirection: Literal[
+        "x", "y", "diagonal"] = "x"
+    solidTransitionRotateEachLayer: bool = False
+    solidTransitionRotationPerLayer: float = Field(
+        default=90, ge=-180, le=180)
+    solidTransitionContourEnabled: bool = True
+    solidTransitionContourPower: float = Field(default=50, ge=0, le=100)
+    solidTransitionContourSpeed: float = Field(default=3000, gt=0)
+    solidTransitionContourLineCount: int = Field(
+        default=1, ge=1, le=25)
+    solidTransitionContourOverlap: float = Field(
+        default=0, ge=-100, le=100)
     solidTrackWidth: float = Field(default=0.2, gt=0)
     solidCloseTopBottomEnabled: bool = False
     solidCloseTopBottomLayers: int = Field(default=3, ge=1)
@@ -200,6 +239,13 @@ class PrusaSlicerSettings(ZoneExposureSettings):
         default=0.2, gt=0)
     solidRasterDirection: Literal["x", "y", "diagonal"] = "x"
     solidCrossHatch: bool = False
+    solidAlternateLines: bool = True
+    solidAlternateMode: Literal[
+        "two-pass", "edge-interleave"] = "edge-interleave"
+    solidIslandScanningEnabled: bool = False
+    solidIslandSize: float = Field(default=3, gt=0)
+    solidIslandScanStrategy: Literal[
+        "normal", "two-pass", "edge-interleave"] = "edge-interleave"
     solidPower: float = Field(default=50, ge=0, le=100)
     solidSpeed: float = Field(default=3000, gt=0)
     solidContourOverlap: float = Field(default=0, ge=-100, le=100)
@@ -266,6 +312,24 @@ class PrusaSlicerSettings(ZoneExposureSettings):
     flatSurfaceSkinSecondPassContourOverlap: Optional[float] = Field(default=15, ge=-100, le=100)
     roofHollowInfillEnabled: Optional[bool] = False
     roofHollowInfillOverlap: Optional[float] = Field(default=15, ge=-100, le=100)
+    internalFloorSupportEnabled: Optional[bool] = False
+    internalFloorSupportMode: Optional[Literal["vectoring", "engraving"]] = "vectoring"
+    internalFloorSupportType: Optional[Literal["Lines", "Grid"]] = "Lines"
+    internalFloorSupportPower: Optional[float] = Field(default=50, ge=0, le=100)
+    internalFloorSupportSpeed: Optional[float] = Field(default=3000, gt=0)
+    internalFloorSupportTrackWidth: Optional[float] = Field(default=0.2, gt=0)
+    internalFloorSupportLineOverlap: Optional[float] = Field(default=0, ge=-100, le=95)
+    internalFloorSupportLineCount: Optional[int] = Field(default=3, ge=1)
+    internalFloorSupportHatchSpacing: Optional[float] = Field(default=1, gt=0)
+    internalFloorSupportGridSpacing: Optional[float] = Field(default=2, gt=0)
+    internalFloorSupportGridClearance: Optional[float] = Field(default=0.2, ge=0)
+    internalFloorSupportAngle: Optional[float] = 45
+    internalFloorSupportRotationPerLayer: Optional[float] = 67
+    internalFloorSupportGroupingEnabled: Optional[bool] = False
+    internalFloorSupportGroupLayers: Optional[int] = Field(default=1, ge=1)
+    internalFloorSupportBoundaryClearance: Optional[float] = Field(default=0, ge=0)
+    internalFloorSupportMinimumArea: Optional[float] = Field(default=0.1, ge=0)
+    internalFloorSupportOptimizeScanOrder: Optional[bool] = True
     variableGridInfillEnabled: Optional[bool] = False
     variableGridTarget: Optional[Literal["hollow", "both"]] = "hollow"
     variableGridInfillLayersBeforeRoof: Optional[int] = Field(default=3, ge=1)
@@ -307,7 +371,6 @@ class PrusaSlicerSettings(ZoneExposureSettings):
     gridClearance: Optional[float] = 0.2
     optimizeScanOrder: Optional[bool] = True
     fillEnclosedHollows: Optional[bool] = False
-    recoaterFeedRate: Optional[float] = 3000
     isHollowingEnabled: bool
     hollowingWallThickness: float
     hollowingClosingDistance: float
@@ -398,6 +461,21 @@ class SlicingSettings(BaseModel):
     pyslmSettings: PyslmSettings
     engravingMode: Optional[Literal["vectoring", "engraving"]] = None
     recoaterFeedRate: Optional[float] = None
+    recoaterReturnBedDropEnabled: Optional[bool] = None
+    recoaterReturnBedDropDistance: Optional[float] = None
+    recoaterReturnBedFeedRate: Optional[float] = None
+
+
+class SolidSlicingObject(BaseModel):
+    """One independently configurable solid model in a shared build."""
+
+    id: str
+    name: str
+    modelFile: str
+    modelSize: ThreeDModelSize
+    offsetX: float = 0
+    offsetY: float = 0
+    prusaSettings: PrusaSlicerSettings
 
 
 class SlicingData(BaseModel):
@@ -412,6 +490,7 @@ class SlicingData(BaseModel):
 
     modelFile: str
     modelSize: ThreeDModelSize
+    solidObjects: Optional[List[SolidSlicingObject]] = None
     printHeightLowerLimit: Optional[float] = None
     printHeightLimit: Optional[float] = None
     slicingSettings: SlicingSettings

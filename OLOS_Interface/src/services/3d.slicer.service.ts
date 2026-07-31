@@ -12,6 +12,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
 import { AMFLoader } from 'three/examples/jsm/loaders/AMFLoader';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 import {
   ModelData,
@@ -432,9 +433,10 @@ export class ThreeDSlicer {
    * Restores a model exported from a saved slicer project without recentering
    * its baked machine-bed placement.
    */
-  addSavedProjectModel = async (file: File) => {
+  addSavedProjectModel = async (file: File, displayName?: string) => {
     const object = (await this.load3DModel(file, false)) as THREE.Mesh;
-    this.addModelToContainer(object, false);
+    if (displayName) object.name = displayName;
+    return this.addModelToContainer(object, false);
   };
 
   /**
@@ -466,6 +468,39 @@ export class ThreeDSlicer {
         return;
     }
     return blob;
+  };
+
+  /**
+   * Exports every scene model independently while retaining its absolute
+   * placement on the machine bed.
+   */
+  exportSceneModelsIndividually = (format: string) => {
+    if (format !== Constants.SLICING_FILES_FORMATE.STL) return [];
+
+    const exporter = new STLExporter();
+
+    return this.uploadedModels.flatMap((model) => {
+      const id = model.object?.userData.id as string | undefined;
+      if (!model.object || !id) return [];
+
+      const exportGroup = this.prepareExportGroup([model]);
+      const bounds = new THREE.Box3().setFromObject(exportGroup);
+      const bedCenterOffset = bounds.getCenter(new THREE.Vector3());
+      const output = exporter.parse(exportGroup, { binary: true });
+
+      return [
+        {
+          id,
+          name: model.object.name || 'Model',
+          blob: new Blob([output], { type: 'application/octet-stream' }),
+          modelSize: bounds.getSize(new THREE.Vector3()),
+          // Individual slices are centered by Prusa, then restored to this
+          // absolute displacement from the machine bed center during merging.
+          offsetX: bedCenterOffset.x,
+          offsetY: bedCenterOffset.y,
+        },
+      ];
+    });
   };
 
   /**
@@ -721,6 +756,14 @@ export class ThreeDSlicer {
           mesh.name = 'Box';
         }
         break;
+
+      case Constants.SLICING_MESH_SHAPES.ROUNDED_BOX: {
+        const geometry = new RoundedBoxGeometry(10, 10, 10, 4, 2);
+        const material = new THREE.MeshStandardMaterial();
+        mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'Rounded Box';
+        break;
+      }
 
       case Constants.SLICING_MESH_SHAPES.CAPSULE: {
         const geometry = new THREE.CapsuleGeometry(10, 10, 40, 80);
@@ -1169,9 +1212,10 @@ export class ThreeDSlicer {
   private addModelToContainer = (
     object: THREE.Mesh | null,
     centralize = true
-  ) => {
+  ): ModelData | undefined => {
     if (object) {
       this.resetSelectedModel();
+      object.name = this.getUniqueModelName(object.name);
 
       const helperBox = new THREE.BoxHelper(object, 0xdfff00);
       const model = {
@@ -1189,7 +1233,48 @@ export class ThreeDSlicer {
       this.scene.add(object);
       this.uploadedModels.push(model);
       this.updatePiniaStoreUploadedModelsList();
+      this.selectNewModel(
+        object,
+        helperBox,
+        this.getTransformSnapshot(object)
+      );
+      return model;
     }
+  };
+
+  /** Returns a stable display name that distinguishes duplicate scene models. */
+  private getUniqueModelName = (requestedName: string) => {
+    const fallbackName = requestedName.trim() || 'Model';
+    const existingNames = new Set(
+      this.uploadedModels
+        .map((model) => model.object?.name)
+        .filter((name): name is string => Boolean(name))
+    );
+    if (!existingNames.has(fallbackName)) return fallbackName;
+
+    const extensionIndex = fallbackName.lastIndexOf('.');
+    const hasExtension = extensionIndex > 0;
+    const extension = hasExtension
+      ? fallbackName.substring(extensionIndex)
+      : '';
+    let stem = hasExtension
+      ? fallbackName.substring(0, extensionIndex)
+      : fallbackName;
+    const numberedStem = stem.match(/^(.*) (\d+)$/);
+    if (
+      numberedStem &&
+      existingNames.has(`${numberedStem[1]}${extension}`)
+    ) {
+      stem = numberedStem[1];
+    }
+
+    let copyNumber = 2;
+    let candidate = `${stem} ${copyNumber}${extension}`;
+    while (existingNames.has(candidate)) {
+      copyNumber += 1;
+      candidate = `${stem} ${copyNumber}${extension}`;
+    }
+    return candidate;
   };
 
   /**
@@ -1657,9 +1742,11 @@ export class ThreeDSlicer {
    * @description Creates a new group containing clones of all uploaded models, ready for export.
    * @returns {THREE.Group} The group prepared for export.
    */
-  private prepareExportGroup = () => {
+  private prepareExportGroup = (
+    models: ModelData[] = this.uploadedModels
+  ) => {
     const exportGroup = new THREE.Group();
-    for (const model of this.uploadedModels) {
+    for (const model of models) {
       if (model.object) {
         const cloned = model.object.clone();
         this.bakeWorldTransforms(cloned);

@@ -114,7 +114,7 @@ class SliceHelper:
             suffix='.gcode')
 
         # running slicing process on separate process
-        self._slice_models_process = None
+        self._slicing_models_process = None
 
     def set_database_cursor(self, db_cursor):
         """
@@ -278,6 +278,20 @@ class SliceHelper:
             websocket_write_queue (PriorityQueueWithCounter): Queue for WebSocket.
         """
 
+        if (
+            self._slicing_models_process is not None
+            and self._slicing_models_process.is_alive()
+        ):
+            response = self.handle_error_requests(
+                constants.SLICE_PROCESS,
+                "A slicing process is already running. Wait for it to finish "
+                "or cancel it before slicing again.")
+            fastAPI_write_queue.put(response)
+            return
+
+        if self._slicing_models_process is not None:
+            self._slicing_models_process.join()
+
         # Start the generate_images function in a separate process
         self._slicing_models_process = multiprocessing.Process(
             target=start_slicing_process, args=(self._threeD_slice,
@@ -301,6 +315,7 @@ class SliceHelper:
         if self._slicing_models_process is not None:
             self._slicing_models_process.terminate()
             self._slicing_models_process.join()
+            self._slicing_models_process = None
 
         response = self._fastapi_3d_slice_response(
             type=constants.SLICE_DATA_TYPE,

@@ -66,6 +66,15 @@ def _extract_zone_settings(slicing_settings):
         out['powder_feed'] = -abs(float(slicing_settings.reservoirLiftPerLayer))
     if hasattr(slicing_settings, 'recoaterFeedRate'):
         out['recoater_feed'] = int(slicing_settings.recoaterFeedRate)
+    if hasattr(slicing_settings, 'recoaterReturnBedDropEnabled'):
+        out['recoater_return_bed_drop_enabled'] = bool(
+            slicing_settings.recoaterReturnBedDropEnabled)
+    if hasattr(slicing_settings, 'recoaterReturnBedDropDistance'):
+        out['recoater_return_bed_drop_distance'] = float(
+            slicing_settings.recoaterReturnBedDropDistance)
+    if hasattr(slicing_settings, 'recoaterReturnBedFeedRate'):
+        out['recoater_return_bed_feed_rate'] = int(
+            slicing_settings.recoaterReturnBedFeedRate)
     if hasattr(slicing_settings, 'bedOffsetX'):
         out['bed_offset_x'] = float(slicing_settings.bedOffsetX)
     if hasattr(slicing_settings, 'bedOffsetY'):
@@ -94,6 +103,14 @@ class ThreeDSlice:
             recoater_feed_rate = getattr(settings, 'recoaterFeedRate', None)
             if recoater_feed_rate is not None:
                 settings.prusaSettings.recoaterFeedRate = recoater_feed_rate
+            for field in (
+                'recoaterReturnBedDropEnabled',
+                'recoaterReturnBedDropDistance',
+                'recoaterReturnBedFeedRate',
+            ):
+                value = getattr(settings, field, None)
+                if value is not None:
+                    setattr(settings.prusaSettings, field, value)
             slicer._use_prusa_slicer(model_tmp_file_path, slice_result_tmp_file_path,
                                      slice_data.modelSize, settings.prusaSettings,
                                      websocket_write_queue,

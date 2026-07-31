@@ -350,7 +350,8 @@ export class Gcode3DPreviewer {
     variableGridStage2ToDraw: Line[] | undefined,
     variableGridStage3ToDraw: Line[] | undefined,
     surfaceSkinToDraw: Line[] | undefined,
-    isEngravingLayer = false
+    isEngravingLayer = false,
+    preparationType?: 'anchor' | 'transition'
   ) => {
     console.log(
       `[drawSliceResult] contourToDraw=${contourToDraw?.length ?? 0} lines, ` +
@@ -390,7 +391,23 @@ export class Gcode3DPreviewer {
       this.recordLayerHeadPositions(infillLayers);
       this.drawInfill(
         infillLayers,
-        isEngravingLayer
+        preparationType === 'anchor'
+          ? {
+              G0: 'darkorange',
+              G1: 'darkorange',
+              G2: 'darkorange',
+              G3: 'darkorange',
+              executedLine: 'darkorange',
+            }
+          : preparationType === 'transition'
+          ? {
+              G0: 'mediumseagreen',
+              G1: 'mediumseagreen',
+              G2: 'mediumseagreen',
+              G3: 'mediumseagreen',
+              executedLine: 'mediumseagreen',
+            }
+          : isEngravingLayer
           ? {
               G0: 'crimson',
               G1: 'crimson',
@@ -405,7 +422,13 @@ export class Gcode3DPreviewer {
               G3: 'lightcoral',
               executedLine: 'lightcoral',
             },
-        isEngravingLayer ? 'engraving-infill' : 'infill'
+        preparationType === 'anchor'
+          ? 'anchor-pad'
+          : preparationType === 'transition'
+          ? 'transition-layer'
+          : isEngravingLayer
+          ? 'engraving-infill'
+          : 'infill'
       );
     }
 
@@ -564,6 +587,8 @@ export class Gcode3DPreviewer {
         previewRole === 'surface-skin' ||
         previewRole === 'engraving-infill' ||
         previewRole === 'engraving-grid' ||
+        previewRole === 'anchor-pad' ||
+        previewRole === 'transition-layer' ||
         previewRole.startsWith('variable-grid-stage-')
       ) {
         const opacityAttribute = lineSegments.geometry.getAttribute('opacity');

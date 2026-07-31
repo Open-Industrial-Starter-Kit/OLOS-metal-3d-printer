@@ -12,18 +12,658 @@
       </q-item-section>
     </q-item>
 
-    <template v-if="prusaSettings.solidModeEnabled">
-      <q-separator />
-      <q-item-label header>Solid Stack</q-item-label>
-
-      <q-item>
-        <q-item-section class="q-gutter-y-sm">
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">Bulk Pattern:</span>
-            <q-chip square dense color="blue-grey-1" text-color="blue-grey-9">
-              Edge Interleave Engraving
-            </q-chip>
+    <q-separator />
+      <q-item v-if="prusaSettings.solidModeEnabled" dense>
+        <q-item-section avatar>
+          <q-icon name="view_in_ar" :color="colorTheme" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label caption>Object settings</q-item-label>
+          <q-item-label class="text-weight-medium">
+            {{ selectedSolidObjectName }}
+          </q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item v-if="prusaSettings.solidModeEnabled" dense>
+        <q-item-section>
+          <q-btn
+            label="Save Settings for Object"
+            icon="save"
+            no-caps
+            unelevated
+            :color="colorTheme"
+            :disable="!selectedModel.object"
+            @click="handleSaveObjectSettings"
+          />
+        </q-item-section>
+      </q-item>
+      <q-expansion-item
+        :label="
+          prusaSettings.solidModeEnabled
+            ? 'Preparation'
+            : 'Preparation: Anchor & Flange Transition'
+        "
+        icon="construction"
+        default-opened
+        header-class="bg-blue-grey-1 text-weight-medium"
+      >
+        <q-item>
+          <q-item-section class="q-gutter-y-sm">
+          <div class="row items-center justify-between no-wrap">
+            <div class="row items-center q-gutter-x-xs no-wrap">
+              <span class="text-bold text-caption">Sacrificial Anchor Pad</span>
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip>
+                  Adds engraved square layers beneath every disconnected model
+                  before the model itself begins.
+                </q-tooltip>
+              </q-icon>
+            </div>
+            <q-toggle
+              v-model="prusaSettings.solidAnchorPadEnabled"
+              :color="colorTheme"
+            />
           </div>
+
+          <template v-if="prusaSettings.solidAnchorPadEnabled">
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Anchor Pad Layers:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidAnchorPadLayers"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              step="1"
+              :rules="[ (val: number) => Number.isInteger(val) && val >= 1
+              || 'Layer count should be a whole number above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Square Size:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidAnchorPadSize"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0.01"
+              step="0.1"
+              suffix="mm x mm"
+              :rules="[ (val: number) => val && val > 0
+              || 'Square size should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Anchor Pad Power:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidAnchorPadPower"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0"
+              max="100"
+              suffix="%"
+              :rules="[ (val: number) => 0 <= val && val <= 100
+              || 'Laser power should be between 0 and 100']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Anchor Pad Feed Rate:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidAnchorPadSpeed"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              suffix="mm/min"
+              :rules="[ (val: number) => val && val > 0
+              || 'Feed rate should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Anchor Pad Line Overlap:</span>
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip>
+                  Zero places adjacent engraved lines one estimated track
+                  width apart.
+                </q-tooltip>
+              </q-icon>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidAnchorPadLineOverlap"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="-100"
+              max="95"
+              step="1"
+              suffix="%"
+              :rules="[ (val: number) => -100 <= val && val <= 95
+              || 'Line overlap should be between -100 and 95']"
+            />
+
+            <div class="row items-center justify-between no-wrap">
+              <div class="row items-center q-gutter-x-xs no-wrap">
+                <span class="text-bold text-caption">Rotate Each Layer</span>
+                <q-icon name="help" size="xs" color="blue-grey-9">
+                  <q-tooltip>
+                    Starts from the model pattern direction and rotates each
+                    following anchor-pad layer by the selected angle.
+                  </q-tooltip>
+                </q-icon>
+              </div>
+              <q-toggle
+                v-model="prusaSettings.solidAnchorPadRotateEachLayer"
+                :color="colorTheme"
+              />
+            </div>
+
+            <template v-if="prusaSettings.solidAnchorPadRotateEachLayer">
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">
+                  Rotation per Layer:
+                </span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidAnchorPadRotationPerLayer"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="-180"
+                max="180"
+                step="1"
+                suffix="deg/layer"
+                :rules="[ (val: number) => -180 <= val && val <= 180
+                || 'Rotation should be between -180 and 180 degrees']"
+              />
+            </template>
+          </template>
+          <q-separator spaced />
+
+          <div class="row items-center justify-between no-wrap">
+            <div class="row items-center q-gutter-x-xs no-wrap">
+              <span class="text-bold text-caption">
+                {{
+                  prusaSettings.solidModeEnabled
+                    ? 'Transition Layers'
+                    : 'Transition Layers & Internal Flange Support'
+                }}
+              </span>
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip>
+                  {{
+                    prusaSettings.solidModeEnabled
+                      ? 'Adds engraved interface layers after the anchor pad and before the first model layer.'
+                      : 'Adds engraved interface layers below the model, detects floors or flanges over enclosed hollows, and continues the same pattern only through the hollow space up to those features.'
+                  }}
+                </q-tooltip>
+              </q-icon>
+            </div>
+            <q-toggle
+              v-model="prusaSettings.solidTransitionEnabled"
+              :color="colorTheme"
+            />
+          </div>
+
+          <template v-if="prusaSettings.solidTransitionEnabled">
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Transition Layers:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidTransitionLayers"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              max="1000"
+              step="1"
+              :rules="[ (val: number) => Number.isInteger(val)
+              && 1 <= val && val <= 1000
+              || 'Transition layers should be a whole number from 1 to 1000']"
+            />
+            <q-banner
+              dense
+              rounded
+              class="bg-blue-grey-1 text-blue-grey-9 text-caption"
+            >
+              Base transition height:
+              <strong>{{ transitionTotalHeight.toFixed(3) }} mm</strong>
+              ({{ prusaSettings.solidTransitionLayers }} layers x
+              {{ normalizedLayerHeight.toFixed(3) }} mm).
+              <span
+                v-if="
+                  !prusaSettings.solidModeEnabled &&
+                  prusaSettings.internalFloorSupportEnabled
+                "
+              >
+                Internal transition support is extended automatically through
+                enclosed hollow regions and stops directly below each detected
+                floor or flange.
+              </span>
+              <span v-else-if="!prusaSettings.solidModeEnabled">
+                Internal support is off, so these layers stop at the first
+                model contact.
+              </span>
+            </q-banner>
+
+            <template v-if="!prusaSettings.solidModeEnabled">
+              <div class="row items-center justify-between no-wrap">
+                <div class="row items-center q-gutter-x-xs no-wrap">
+                  <span class="text-bold text-caption">
+                    Support Internal Flanges
+                  </span>
+                  <q-icon name="help" size="xs" color="blue-grey-9">
+                    <q-tooltip>
+                      Off keeps the transition stack below the model and stops
+                      at its first contact. On detects floors and flanges over
+                      enclosed hollows, then continues this transition pattern
+                      only inside those hollows until one layer below each
+                      detected feature.
+                    </q-tooltip>
+                  </q-icon>
+                </div>
+                <q-toggle
+                  v-model="prusaSettings.internalFloorSupportEnabled"
+                  :color="colorTheme"
+                />
+              </div>
+              <q-banner
+                v-if="prusaSettings.internalFloorSupportEnabled"
+                dense
+                rounded
+                class="bg-orange-1 text-blue-grey-9 text-caption"
+              >
+                Flange support is enabled. Power, feed rate, line or grid
+                pattern, overlap, rotation, and optional contour use the
+                transition settings below.
+              </q-banner>
+            </template>
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Transition Pattern:</span>
+            </div>
+            <q-btn-toggle
+              v-model="prusaSettings.solidTransitionPattern"
+              :options="[
+                { label: 'Lines', value: 'lines' },
+                { label: 'Grid', value: 'grid' }
+              ]"
+              color="primary"
+              text-color="white"
+              toggle-color="orange"
+              class="full-width"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Pattern Direction:</span>
+            </div>
+            <q-btn-toggle
+              v-model="prusaSettings.solidTransitionRasterDirection"
+              :options="[
+                { label: 'X', value: 'x' },
+                { label: 'Y', value: 'y' },
+                { label: '45 deg', value: 'diagonal' }
+              ]"
+              color="primary"
+              text-color="white"
+              toggle-color="orange"
+              class="full-width"
+            />
+
+            <div class="row items-center justify-between no-wrap">
+              <span class="text-bold text-caption">Rotate Each Layer</span>
+              <q-toggle
+                v-model="prusaSettings.solidTransitionRotateEachLayer"
+                :color="colorTheme"
+              />
+            </div>
+
+            <template v-if="prusaSettings.solidTransitionRotateEachLayer">
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Rotation per Layer:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionRotationPerLayer"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="-180"
+                max="180"
+                step="1"
+                suffix="deg/layer"
+                :rules="[ (val: number) => -180 <= val && val <= 180
+                || 'Rotation should be between -180 and 180 degrees']"
+              />
+            </template>
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Transition Power:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidTransitionPower"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0"
+              max="100"
+              suffix="%"
+              :rules="[ (val: number) => 0 <= val && val <= 100
+              || 'Laser power should be between 0 and 100']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Transition Feed Rate:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidTransitionSpeed"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              suffix="mm/min"
+              :rules="[ (val: number) => val && val > 0
+              || 'Feed rate should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Transition Track Width:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidTransitionTrackWidth"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0.01"
+              step="0.01"
+              suffix="mm"
+              :rules="[ (val: number) => val && val > 0
+              || 'Track width should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <div class="row items-center q-gutter-x-xs no-wrap">
+                <span class="text-bold text-caption">Line Overlap:</span>
+                <q-icon name="help" size="xs" color="blue-grey-9">
+                  <q-tooltip>
+                    Zero places lines in a hatch bundle one estimated track
+                    width apart.
+                  </q-tooltip>
+                </q-icon>
+              </div>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidTransitionLineOverlap"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="-100"
+              max="95"
+              step="1"
+              suffix="%"
+              :rules="[ (val: number) => -100 <= val && val <= 95
+              || 'Line overlap should be between -100 and 95']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Lines per Hatch:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidTransitionLineCount"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              max="25"
+              step="1"
+              :rules="[ (val: number) => Number.isInteger(val)
+              && 1 <= val && val <= 25
+              || 'Line count should be a whole number from 1 to 25']"
+            />
+
+            <template v-if="prusaSettings.solidTransitionPattern === 'lines'">
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Hatch Spacing:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionHatchSpacing"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="0.01"
+                step="0.1"
+                suffix="mm"
+                :rules="[ (val: number) => val && val > 0
+                || 'Hatch spacing should be above 0']"
+              />
+            </template>
+
+            <template v-else>
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Grid Spacing:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionGridSpacing"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="0.01"
+                step="0.1"
+                suffix="mm"
+                :rules="[ (val: number) => val && val > 0
+                || 'Grid spacing should be above 0']"
+              />
+
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Grid Crossing Clearance:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionGridClearance"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="0"
+                step="0.05"
+                suffix="mm"
+                :rules="[ (val: number) => val >= 0
+                || 'Grid clearance cannot be negative']"
+              />
+            </template>
+
+            <div class="row items-center justify-between no-wrap">
+              <span class="text-bold text-caption">Transition Contour</span>
+              <q-toggle
+                v-model="prusaSettings.solidTransitionContourEnabled"
+                :color="colorTheme"
+              />
+            </div>
+
+            <template v-if="prusaSettings.solidTransitionContourEnabled">
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Contour Power:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionContourPower"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="0"
+                max="100"
+                suffix="%"
+                :rules="[ (val: number) => 0 <= val && val <= 100
+                || 'Laser power should be between 0 and 100']"
+              />
+
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Contour Feed Rate:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionContourSpeed"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="1"
+                suffix="mm/min"
+                :rules="[ (val: number) => val && val > 0
+                || 'Feed rate should be above 0']"
+              />
+
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Contour Lines:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionContourLineCount"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="1"
+                max="25"
+                step="1"
+                :rules="[ (val: number) => Number.isInteger(val)
+                && 1 <= val && val <= 25
+                || 'Contour line count should be from 1 to 25']"
+              />
+
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Contour Overlap:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.solidTransitionContourOverlap"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="-100"
+                max="100"
+                step="1"
+                suffix="%"
+                :rules="[ (val: number) => -100 <= val && val <= 100
+                || 'Contour overlap should be between -100 and 100']"
+              />
+            </template>
+          </template>
+        </q-item-section>
+      </q-item>
+      </q-expansion-item>
+
+      <q-expansion-item
+        v-if="prusaSettings.solidModeEnabled"
+        label="Model Settings"
+        icon="view_in_ar"
+      >
+        <q-item>
+          <q-item-section class="q-gutter-y-sm">
+          <div class="row items-center justify-between no-wrap">
+            <div class="row items-center q-gutter-x-xs no-wrap">
+              <span class="text-bold text-caption">Merge Objects by Layer</span>
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip>
+                  Completes the current layer for every disconnected solid
+                  before running the layer-change routine.
+                </q-tooltip>
+              </q-icon>
+            </div>
+            <q-toggle
+              v-model="prusaSettings.solidMergeObjectsByLayer"
+              :color="colorTheme"
+            />
+          </div>
+
+          <q-separator spaced />
+
+          <div class="row items-center justify-between no-wrap">
+            <span class="text-bold text-caption">Alternate Solid Paths</span>
+            <q-toggle
+              v-model="prusaSettings.solidAlternateLines"
+              :color="colorTheme"
+            />
+          </div>
+
+          <q-btn-toggle
+            v-if="prusaSettings.solidAlternateLines"
+            v-model="prusaSettings.solidAlternateMode"
+            :options="[
+              { label: 'Two Passes', value: 'two-pass' },
+              { label: 'Edge Interleave', value: 'edge-interleave' }
+            ]"
+            color="primary"
+            text-color="white"
+            toggle-color="orange"
+            class="full-width"
+          />
+
+          <div class="row items-center justify-between no-wrap">
+            <div class="row items-center q-gutter-x-xs no-wrap">
+              <span class="text-bold text-caption">Island Scanning</span>
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip>
+                  Completes one fitted section of the solid layer before
+                  moving to the next. Actual island dimensions are adjusted
+                  so a whole number fits along each object axis.
+                </q-tooltip>
+              </q-icon>
+            </div>
+            <q-toggle
+              v-model="prusaSettings.solidIslandScanningEnabled"
+              :color="colorTheme"
+            />
+          </div>
+
+          <template v-if="prusaSettings.solidIslandScanningEnabled">
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Requested Island Size:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.solidIslandSize"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0.01"
+              step="0.1"
+              suffix="mm x mm"
+              :rules="[ (val: number) => val && val > 0
+              || 'Island size should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Island Line Strategy:</span>
+            </div>
+            <q-btn-toggle
+              v-model="prusaSettings.solidIslandScanStrategy"
+              :options="[
+                { label: 'Normal', value: 'normal' },
+                { label: 'Two Passes', value: 'two-pass' },
+                { label: 'Edge Interleave', value: 'edge-interleave' }
+              ]"
+              color="primary"
+              text-color="white"
+              toggle-color="orange"
+              class="full-width"
+            />
+          </template>
 
           <div class="row items-center justify-between no-wrap">
             <span class="text-bold text-caption">Close Top &amp; Bottom</span>
@@ -133,136 +773,6 @@
             || 'Track width should be between 0.01 and 2 mm']"
           />
 
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">XY Gantry Acceleration:</span>
-            <q-icon name="help" size="xs" color="blue-grey-9">
-              <q-tooltip>
-                Machine acceleration used to compensate engraving line ends.
-              </q-tooltip>
-            </q-icon>
-          </div>
-          <q-input
-            v-model.number="prusaSettings.engravingAcceleration"
-            type="number"
-            outlined
-            :color="colorTheme"
-            dense
-            min="1"
-            step="10"
-            suffix="mm/s^2"
-            :rules="[ (val: number) => val && val >= 1
-            || 'Acceleration should be at least 1 mm/s^2']"
-          />
-        </q-item-section>
-      </q-item>
-
-      <q-separator />
-      <q-item-label header>Layer &amp; Machine</q-item-label>
-
-      <q-item>
-        <q-item-section class="q-gutter-y-sm">
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">Layer Height:</span>
-          </div>
-          <q-input
-            v-model.number="prusaSettings.layerHeight"
-            type="number"
-            outlined
-            :color="colorTheme"
-            dense
-            suffix="mm"
-            step="0.01"
-            min="0.001"
-            :rules="[ (val: number) => val && val > 0
-            || 'Layer height should be above 0']"
-          />
-
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">Layer Z Travel Speed:</span>
-          </div>
-          <q-input
-            v-model.number="prusaSettings.layerSpeed"
-            type="number"
-            outlined
-            :color="colorTheme"
-            dense
-            suffix="mm/min"
-            min="1"
-            :rules="[ (val: number) => val && val > 0
-            || 'Feed rate should be above 0']"
-          />
-
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">No-Routine First Layers:</span>
-          </div>
-          <q-input
-            v-model.number="prusaSettings.noRoutineFirstLayers"
-            type="number"
-            outlined
-            :color="colorTheme"
-            dense
-            min="0"
-            step="1"
-            :rules="[ (val: number) => Number.isInteger(val) && val >= 0
-            || 'Layer count should be a whole number of 0 or above']"
-          />
-
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">Reservoir Lift per Layer:</span>
-          </div>
-          <q-input
-            v-model.number="prusaSettings.reservoirLiftPerLayer"
-            type="number"
-            outlined
-            :color="colorTheme"
-            dense
-            min="0"
-            step="0.05"
-            suffix="mm"
-            :rules="[ (val: number) => val >= 0
-            || 'Lift should be 0 or above']"
-          />
-
-          <div class="row items-center justify-between">
-            <span class="text-bold text-caption">Recoater Feed Rate:</span>
-          </div>
-          <q-input
-            v-model.number="prusaSettings.recoaterFeedRate"
-            type="number"
-            outlined
-            :color="colorTheme"
-            dense
-            min="1"
-            step="100"
-            suffix="mm/min"
-            :rules="[ (val: number) => val && val > 0
-            || 'Feed rate should be above 0']"
-          />
-
-          <div class="row q-col-gutter-sm">
-            <div class="col-6">
-              <q-input
-                v-model.number="prusaSettings.bedOffsetX"
-                label="Bed Offset X"
-                type="number"
-                outlined
-                :color="colorTheme"
-                dense
-                suffix="mm"
-              />
-            </div>
-            <div class="col-6">
-              <q-input
-                v-model.number="prusaSettings.bedOffsetY"
-                label="Bed Offset Y"
-                type="number"
-                outlined
-                :color="colorTheme"
-                dense
-                suffix="mm"
-              />
-            </div>
-          </div>
         </q-item-section>
       </q-item>
 
@@ -625,9 +1135,194 @@
           </template>
         </q-item-section>
       </q-item>
-    </template>
+      </q-expansion-item>
 
-    <template v-else>
+      <q-expansion-item
+        v-if="prusaSettings.solidModeEnabled"
+        label="Machine"
+        icon="precision_manufacturing"
+      >
+        <q-item>
+          <q-item-section class="q-gutter-y-sm">
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Layer Height:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.layerHeight"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              suffix="mm"
+              step="0.01"
+              min="0.001"
+              :rules="[ (val: number) => val && val > 0
+              || 'Layer height should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Layer Z Travel Speed:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.layerSpeed"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              suffix="mm/min"
+              min="1"
+              :rules="[ (val: number) => val && val > 0
+              || 'Feed rate should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">No-Routine First Layers:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.noRoutineFirstLayers"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0"
+              step="1"
+              :rules="[ (val: number) => Number.isInteger(val) && val >= 0
+              || 'Layer count should be a whole number of 0 or above']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Reservoir Lift per Layer:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.reservoirLiftPerLayer"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="0"
+              step="0.05"
+              suffix="mm"
+              :rules="[ (val: number) => val >= 0
+              || 'Lift should be 0 or above']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Recoater Feed Rate:</span>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.recoaterFeedRate"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              step="100"
+              suffix="mm/min"
+              :rules="[ (val: number) => val && val > 0
+              || 'Feed rate should be above 0']"
+            />
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">Return-Pass Bed Clearance:</span>
+              <div class="row items-center q-gutter-x-sm">
+                <q-icon name="help" size="xs" color="blue-grey-9">
+                  <q-tooltip>
+                    After the forward recoater stroke, dip the build bed for the
+                    return stroke, then restore scan height with a backlash-safe
+                    final approach.
+                  </q-tooltip>
+                </q-icon>
+                <q-toggle
+                  v-model="prusaSettings.recoaterReturnBedDropEnabled"
+                  :color="colorTheme"
+                />
+              </div>
+            </div>
+
+            <template v-if="prusaSettings.recoaterReturnBedDropEnabled">
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Bed Dip Distance:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.recoaterReturnBedDropDistance"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="0.001"
+                step="0.01"
+                suffix="mm"
+                :rules="[ (val: number) => val && val > 0
+                || 'Dip distance should be above 0']"
+              />
+
+              <div class="row items-center justify-between">
+                <span class="text-bold text-caption">Bed Z Feed Rate:</span>
+              </div>
+              <q-input
+                v-model.number="prusaSettings.recoaterReturnBedFeedRate"
+                type="number"
+                outlined
+                :color="colorTheme"
+                dense
+                min="1"
+                step="10"
+                suffix="mm/min"
+                :rules="[ (val: number) => val && val > 0
+                || 'Feed rate should be above 0']"
+              />
+            </template>
+
+            <div class="row items-center justify-between">
+              <span class="text-bold text-caption">XY Gantry Acceleration:</span>
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip>
+                  Machine acceleration used to compensate engraving line ends.
+                </q-tooltip>
+              </q-icon>
+            </div>
+            <q-input
+              v-model.number="prusaSettings.engravingAcceleration"
+              type="number"
+              outlined
+              :color="colorTheme"
+              dense
+              min="1"
+              step="10"
+              suffix="mm/s^2"
+              :rules="[ (val: number) => val && val >= 1
+              || 'Acceleration should be at least 1 mm/s^2']"
+            />
+
+            <div class="row q-col-gutter-sm">
+              <div class="col-6">
+                <q-input
+                  v-model.number="prusaSettings.bedOffsetX"
+                  label="Bed Offset X"
+                  type="number"
+                  outlined
+                  :color="colorTheme"
+                  dense
+                  suffix="mm"
+                />
+              </div>
+              <div class="col-6">
+                <q-input
+                  v-model.number="prusaSettings.bedOffsetY"
+                  label="Bed Offset Y"
+                  type="number"
+                  outlined
+                  :color="colorTheme"
+                  dense
+                  suffix="mm"
+                />
+              </div>
+            </div>
+          </q-item-section>
+        </q-item>
+      </q-expansion-item>
+
+    <template v-if="!prusaSettings.solidModeEnabled">
     <q-item>
       <q-item-section>
         <div class="row items-center justify-between">
@@ -939,6 +1634,9 @@
             zones.
           </div>
         </q-card-section>
+
+        <q-separator />
+
 
         <q-card-section v-if="hasAnyEngravingLayers">
           <q-toggle
@@ -3612,6 +4310,47 @@
         </q-card-section>
 
         <q-card-section class="q-gutter-y-sm">
+          <div class="row items-center justify-between">
+            <span class="text-bold text-caption">Return-Pass Bed Clearance:</span>
+            <div class="row items-center q-gutter-x-sm">
+              <q-icon name="help" size="xs" color="blue-grey-9">
+                <q-tooltip anchor="center right" self="center left" :offset="[10,10]">
+                  After the forward recoater stroke, dip the build bed for the
+                  return stroke, then restore scan height with a backlash-safe
+                  final approach.
+                </q-tooltip>
+              </q-icon>
+              <q-toggle
+                v-model="prusaSettings.recoaterReturnBedDropEnabled"
+                :color="colorTheme"
+              />
+            </div>
+          </div>
+        </q-card-section>
+
+        <template v-if="prusaSettings.recoaterReturnBedDropEnabled">
+          <q-card-section class="q-gutter-y-sm">
+            <span class="text-bold text-caption">Bed Dip Distance:</span>
+            <q-input
+              v-model.number="prusaSettings.recoaterReturnBedDropDistance"
+              type="number" outlined :color="colorTheme" dense min="0.001"
+              suffix="mm" step="0.01"
+              :rules="[(val: number) => val > 0 || 'Must be above 0']"
+            />
+          </q-card-section>
+
+          <q-card-section class="q-gutter-y-sm">
+            <span class="text-bold text-caption">Bed Z Feed Rate:</span>
+            <q-input
+              v-model.number="prusaSettings.recoaterReturnBedFeedRate"
+              type="number" outlined :color="colorTheme" dense min="1"
+              suffix="mm/min" step="10"
+              :rules="[(val: number) => val > 0 || 'Must be above 0']"
+            />
+          </q-card-section>
+        </template>
+
+        <q-card-section class="q-gutter-y-sm">
           <span class="text-bold text-caption">Bed Offset X:</span>
           <q-input v-model.number="prusaSettings.bedOffsetX"
             type="number" outlined :color="colorTheme" dense suffix="mm" />
@@ -3763,16 +4502,50 @@ import { Constants } from 'src/constants';
 import { use3DSlicingStore } from 'src/stores/3d-slicing';
 import { storeToRefs } from 'pinia';
 import { computed, watch } from 'vue';
+import { showNotifyMessage } from 'src/services/notify.messages.service';
 
 /**
  * Access the 3D slicing store to manage slicing-related settings.
  */
 const slicingStore = use3DSlicingStore();
+const notifyMessage = showNotifyMessage();
 
 /**
  * Reactive references to Prusa slicing settings and UI color theme.
  */
-const { prusaSettings, colorTheme } = storeToRefs(slicingStore);
+const { prusaSettings, colorTheme, selectedModel } =
+  storeToRefs(slicingStore);
+
+const selectedSolidObjectName = computed(
+  () => selectedModel.value.object?.name || 'Select a model'
+);
+
+const normalizedLayerHeight = computed(() => {
+  const height = Number(prusaSettings.value.layerHeight);
+  return Number.isFinite(height) && height > 0 ? height : 0;
+});
+
+const transitionTotalHeight = computed(() => {
+  const layers = Math.max(
+    0,
+    Number(prusaSettings.value.solidTransitionLayers) || 0
+  );
+  return layers * normalizedLayerHeight.value;
+});
+
+const handleSaveObjectSettings = () => {
+  if (!selectedModel.value.object) return;
+  slicingStore.saveSelectedSolidObjectSettings();
+  notifyMessage.success(
+    `Settings saved for ${selectedSolidObjectName.value}.`
+  );
+};
+
+watch(
+  prusaSettings,
+  () => slicingStore.saveSelectedSolidObjectSettings(),
+  { deep: true }
+);
 
 const initializeSolidClosureSettings = (enabled: boolean) => {
   if (!enabled) return;
