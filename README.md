@@ -61,11 +61,6 @@ powered print.
 - Acknowledgement-based execution progress, live command status, pause/resume,
   stop handling, and pre-run circular-bed boundary checks.
 
-For implementation history and validation details, see:
-
-- [Prusa change-log summary](OLOS_Prusa_Change_Log_summary.txt)
-- [Full Prusa change log](OLOS_Prusa_Change_Log.txt)
-- [Metal slicer change report](docs/OLOS_Software_Changes_Report.md)
 
 ## System Architecture
 
