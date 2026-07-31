@@ -159,7 +159,7 @@ at [Fab City Hamburg](https://www.fabcity.hamburg/en/).
 
 - [daniele@inmachines.net](mailto:daniele@inmachines.net)
 - [InMachines](https://www.inmachines.net/)
-- [Dharunjay](mailto:dharunjay14@gmail.com)
+- [Dharunjay Tiwari](mailto:dharunjay14@gmail.com)
 
 ## License
 
