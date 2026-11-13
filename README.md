@@ -3,6 +3,12 @@
   <p><em>Prusa-based metal laser printing workflow for the Open Lab Operating System</em></p>
 </div>
 
+
+<div align="center">
+  <img src="docs/images/machine/result-metal-benchy.png" alt="316L stainless steel 3DBenchy printed on the build plate" width="420">
+  <br><em>316L stainless steel 3DBenchy printed on the platform</em>
+</div>
+
 ## Overview
 
 This project extends the [Open Lab Operating System](https://github.com/satshas/Open-Lab-Operating-System)
@@ -61,6 +67,26 @@ powered print.
 - Estimated motion and recoating time derived from generated G-code.
 - Acknowledgement-based execution progress, live command status, pause/resume,
   stop handling, and pre-run circular-bed boundary checks.
+
+
+## Screenshots
+
+See [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for the full set, including
+every slicer settings panel, plus machine and process imagery.
+
+<div align="center">
+  <img src="docs/images/ui/03-slicing-workspace.png" alt="OLOS 3D slicing workspace" width="420">
+  <img src="docs/images/ui/08-infill-settings.png" alt="Infill settings for the metal workflow" width="420">
+  <br><em>Slicing workspace, and the infill settings for the metal workflow</em>
+</div>
+
+<div align="center">
+  <img src="docs/images/machine/machine-architecture-labelled.png" alt="Machine architecture: galvo scanner, laser diode, gantry, reserve and printing cylinder" width="560">
+  <br><em>Galvo scanner, laser diode, gantry, reserve and printing cylinder</em>
+</div>
+
+The interface screenshots can be reproduced without a machine or the Python
+backend; [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) explains how.
 
 
 ## System Architecture
