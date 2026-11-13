@@ -1,16 +1,17 @@
 <div align="center">
-  <h1>Open Lab Operating System</h1>
-  <p><em>Open-source control and job-preparation software for digital fabrication machines</em></p>
+  <h1>OLOS Metal 3D Printer</h1>
+  <p><em>Prusa-based metal laser printing workflow for the Open Lab Operating System</em></p>
 </div>
 
-## Metal 3D Printer Branch
+## Overview
 
-The `metal-3d-printer` branch extends OLOS with a Prusa-based metal laser
-printing workflow. It converts Prusa SL1 slice masks into compact
-OLOS/VisiCut-style G-code and connects slicing, preview, job management, and
-GRBL-compatible machine execution in one application.
+This project extends the [Open Lab Operating System](https://github.com/satshas/Open-Lab-Operating-System)
+(OLOS) with a Prusa-based metal laser printing workflow. It converts Prusa SL1
+slice masks into compact OLOS/VisiCut-style G-code and connects slicing,
+preview, job management, and GRBL-compatible machine execution in one
+application.
 
-This branch is under active development and targets the OLOS metal 3D printer
+This project is under active development and targets the OLOS metal 3D printer
 workflow. Machine configuration, generated G-code, laser state, axis limits,
 and recoater motion must be verified on the intended controller before a
 powered print.
